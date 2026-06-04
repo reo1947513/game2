@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ARENA STRIKE - テストステージ</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050608;
+        font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+        color: #e8e8e8;
+        user-select: none;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ===== HUD（常時表示の情報レイヤー） ===== */
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* 腰だめ用の十字クロスヘア。移動・射撃で広がる */
+      #crosshair {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 40px;
+        height: 40px;
+        transform: translate(-50%, -50%);
+      }
+      #crosshair .line {
+        position: absolute;
+        background: rgba(255, 200, 80, 0.9);
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+      }
+      #crosshair .top,
+      #crosshair .bottom {
+        left: 50%;
+        top: 50%;
+        width: 2px;
+        height: 8px;
+      }
+      #crosshair .left,
+      #crosshair .right {
+        left: 50%;
+        top: 50%;
+        width: 8px;
+        height: 2px;
+      }
+      #crosshair .top {
+        transform: translate(-50%, calc(-100% - 6px));
+      }
+      #crosshair .bottom {
+        transform: translate(-50%, 6px);
+      }
+      #crosshair .left {
+        transform: translate(calc(-100% - 6px), -50%);
+      }
+      #crosshair .right {
+        transform: translate(6px, -50%);
+      }
+      #crosshair .dot {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 2px;
+        height: 2px;
+        background: rgba(255, 200, 80, 0.9);
+        transform: translate(-50%, -50%);
+      }
+
+      /* アサルト等のドットサイト（覗き込み時の中央レティクル） */
+      #reflex {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ff3b30;
+        box-shadow: 0 0 8px 2px rgba(255, 59, 48, 0.7);
+        transform: translate(-50%, -50%);
+        display: none;
+      }
+
+      /* スナイパー専用スコープ（円形マスク＋十字線） */
+      #scope {
+        position: absolute;
+        inset: 0;
+        display: none;
+        z-index: 11;
+      }
+      #scope .mask {
+        position: absolute;
+        inset: 0;
+        /* 中央だけ透過し、外周を黒く塗りつぶす */
+        background: radial-gradient(
+          circle at 50% 50%,
+          rgba(0, 0, 0, 0) 0,
+          rgba(0, 0, 0, 0) 32vh,
+          rgba(0, 0, 0, 0.98) 32.4vh,
+          rgba(0, 0, 0, 1) 100%
+        );
+      }
+      #scope .ring {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 64vh;
+        height: 64vh;
+        transform: translate(-50%, -50%);
+        border: 2px solid rgba(0, 0, 0, 0.9);
+        border-radius: 50%;
+        box-shadow: inset 0 0 40px 10px rgba(0, 0, 0, 0.6);
+      }
+      #scope .cross-v,
+      #scope .cross-h {
+        position: absolute;
+        background: rgba(0, 0, 0, 0.85);
+      }
+      #scope .cross-v {
+        left: 50%;
+        top: 50%;
+        width: 1px;
+        height: 64vh;
+        transform: translate(-50%, -50%);
+      }
+      #scope .cross-h {
+        left: 50%;
+        top: 50%;
+        height: 1px;
+        width: 64vh;
+        transform: translate(-50%, -50%);
+      }
+      #scope .center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 6px;
+        height: 6px;
+        border: 1px solid rgba(255, 30, 30, 0.9);
+        transform: translate(-50%, -50%);
+      }
+
+      /* 右下：弾薬と武器名 */
+      #ammo {
+        position: absolute;
+        right: 28px;
+        bottom: 24px;
+        text-align: right;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      }
+      #ammo .count {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 1px;
+      }
+      #ammo .count .reserve {
+        font-size: 20px;
+        color: #9aa0a6;
+        font-weight: 500;
+      }
+      #ammo .weapon {
+        font-size: 14px;
+        color: #ffcc55;
+        letter-spacing: 2px;
+      }
+
+      /* 左下：姿勢・速度の状態表示 */
+      #state {
+        position: absolute;
+        left: 28px;
+        bottom: 24px;
+        font-size: 13px;
+        line-height: 1.8;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      }
+      #state .stance {
+        font-size: 18px;
+        font-weight: 700;
+        color: #ffcc55;
+      }
+
+      /* 中央上：ヒットマーカー */
+      #hitmarker {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 26px;
+        height: 26px;
+        transform: translate(-50%, -50%) rotate(45deg);
+        opacity: 0;
+        z-index: 12;
+      }
+      #hitmarker .m {
+        position: absolute;
+        background: #ffffff;
+      }
+      #hitmarker .m1 {
+        left: 0;
+        top: 50%;
+        width: 8px;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+      #hitmarker .m2 {
+        right: 0;
+        top: 50%;
+        width: 8px;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+      #hitmarker .m3 {
+        top: 0;
+        left: 50%;
+        height: 8px;
+        width: 2px;
+        transform: translateX(-50%);
+      }
+      #hitmarker .m4 {
+        bottom: 0;
+        left: 50%;
+        height: 8px;
+        width: 2px;
+        transform: translateX(-50%);
+      }
+
+      /* 開始オーバーレイ（クリックでポインタロック） */
+      #overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(circle at 50% 40%, #14171c 0%, #050608 70%);
+        cursor: pointer;
+      }
+      #overlay h1 {
+        font-size: 44px;
+        letter-spacing: 6px;
+        color: #ffcc55;
+        text-shadow: 0 0 24px rgba(255, 150, 0, 0.5);
+      }
+      #overlay .sub {
+        font-size: 14px;
+        color: #9aa0a6;
+        letter-spacing: 2px;
+      }
+      #overlay .keys {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #c8ccd0;
+        line-height: 2;
+        text-align: center;
+      }
+      #overlay .keys b {
+        color: #ffcc55;
+      }
+      #overlay .start {
+        margin-top: 8px;
+        padding: 12px 28px;
+        border: 1px solid #ffcc55;
+        border-radius: 6px;
+        color: #ffcc55;
+        font-size: 16px;
+        letter-spacing: 3px;
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.6;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      #overlay.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud">
+      <div id="crosshair">
+        <div class="line top"></div>
+        <div class="line bottom"></div>
+        <div class="line left"></div>
+        <div class="line right"></div>
+        <div class="dot"></div>
+      </div>
+
+      <div id="reflex"></div>
+
+      <div id="scope">
+        <div class="mask"></div>
+        <div class="ring"></div>
+        <div class="cross-v"></div>
+        <div class="cross-h"></div>
+        <div class="center"></div>
+      </div>
+
+      <div id="hitmarker">
+        <div class="m m1"></div>
+        <div class="m m2"></div>
+        <div class="m m3"></div>
+        <div class="m m4"></div>
+      </div>
+
+      <div id="ammo">
+        <div class="count"><span id="ammo-mag">30</span><span class="reserve"> / <span id="ammo-reserve">120</span></span></div>
+        <div class="weapon" id="weapon-name">ASSAULT</div>
+      </div>
+
+      <div id="state">
+        <div class="stance" id="stance-label">STAND</div>
+        <div id="speed-label">SPEED 0.0</div>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <h1>ARENA STRIKE</h1>
+      <div class="sub">TEST STAGE — CHARACTER CONTROL PROTOTYPE</div>
+      <div class="keys">
+        移動 <b>W A S D</b> ／ 視点 <b>マウス</b> ／ ジャンプ <b>Space</b>（空中でもう一度押すと2段ジャンプ）<br />
+        ダッシュ <b>Shift</b> ／ しゃがみ <b>Ctrl</b>（ダッシュ中に押すとスライディング）／ 伏せ <b>Z</b>（トグル）<br />
+        壁ジャンプ <b>壁に触れて空中で Space</b><br />
+        射撃 <b>左クリック</b> ／ 覗き込み(ADS) <b>右クリック</b> ／ リロード <b>R</b><br />
+        武器切替 <b>1</b>＝アサルト <b>2</b>＝スナイパー ／ ポインタ解除 <b>Esc</b>
+      </div>
+      <div class="start">クリックして開始</div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

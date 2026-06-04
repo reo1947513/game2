@@ -1,0 +1,21 @@
+{
+  "name": "arena-strike",
+  "version": "0.1.0",
+  "description": "ブラウザで動くオンラインFPS（テスト運用ステージ＋キャラコン＋武器ADS）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

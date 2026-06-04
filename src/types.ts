@@ -1,0 +1,51 @@
+// 共通で使う型と定数をまとめたファイルです。
+
+// 姿勢の種類
+export enum Stance {
+  Stand = "STAND",
+  Crouch = "CROUCH",
+  Prone = "PRONE",
+  Slide = "SLIDE",
+}
+
+// 武器の種類
+export enum WeaponKind {
+  Assault = "ASSAULT",
+  Sniper = "SNIPER",
+}
+
+// 1フレーム分の入力状態のスナップショット
+export interface InputState {
+  // 移動の入力（前後・左右を -1〜1 で表す）
+  forward: number;
+  right: number;
+  // ボタン系（押されているか）
+  sprint: boolean;
+  crouch: boolean;
+  jumpPressed: boolean; // 「押した瞬間」だけ true
+  pronePressed: boolean; // 伏せトグルの押した瞬間
+  firing: boolean; // 左クリック保持
+  aiming: boolean; // 右クリック保持（ADS）
+  reloadPressed: boolean;
+  switchTo: WeaponKind | null; // 1/2キーで武器切替
+  // 視点（マウス移動の累積から計算した向き）
+  yaw: number;
+  pitch: number;
+}
+
+// 武器ごとの性能パラメータ
+export interface WeaponSpec {
+  kind: WeaponKind;
+  displayName: string;
+  magSize: number; // マガジン弾数
+  reserveMax: number; // 予備弾の上限
+  fireInterval: number; // 連射間隔（秒）
+  automatic: boolean; // フルオート可否
+  damage: number;
+  reloadTime: number; // リロード秒数
+  hipSpread: number; // 腰だめの拡散（ラジアン相当の係数）
+  adsSpread: number; // ADS時の拡散
+  recoilKick: number; // 1発の縦反動（ラジアン）
+  adsFov: number; // ADS時の視野角（小さいほど拡大）
+  scope: boolean; // 専用スコープ表示を出すか（スナイパー）
+}

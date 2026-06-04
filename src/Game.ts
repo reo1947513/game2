@@ -4,6 +4,7 @@ import { Stage } from "./Stage";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 import { HUD } from "./HUD";
+import { TouchControls } from "./TouchControls";
 
 // すべてのシステムを組み合わせて毎フレーム動かす中心クラスです。
 export class Game {
@@ -16,10 +17,12 @@ export class Game {
   private player: PlayerController;
   private weapons: WeaponSystem;
   private hud: HUD;
+  private touch: TouchControls;
 
   private clock = new THREE.Clock();
   private eye = new THREE.Vector3();
   private running = false;
+  private paused = false;
 
   constructor(container: HTMLElement) {
     // レンダラー
@@ -47,17 +50,32 @@ export class Game {
     this.hud = new HUD();
     this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud);
 
+    // タッチ操作レイヤー（スマホ・タブレット用）。一時停止メニューから設定を開く。
+    this.touch = new TouchControls(this.input, {
+      onPause: () => this.setPaused(true),
+      onResume: () => this.setPaused(false),
+    });
+
     window.addEventListener("resize", this.onResize);
   }
 
-  // クリックされたらポインタロックを要求して開始
+  // クリック（タップ）されたら開始。タッチ端末ではタッチ操作、それ以外はポインタロック。
   start(): void {
-    this.input.requestLock();
+    if (TouchControls.isTouchDevice()) {
+      this.touch.enable();
+    } else {
+      this.input.requestLock();
+    }
     if (!this.running) {
       this.running = true;
       this.clock.start();
       this.loop();
     }
+  }
+
+  // 一時停止の切り替え（タッチのポーズメニューから呼ばれる）
+  setPaused(paused: boolean): void {
+    this.paused = paused;
   }
 
   private onResize = (): void => {
@@ -74,11 +92,17 @@ export class Game {
     if (dt > 0.05) dt = 0.05;
     const now = performance.now() / 1000;
 
-    // ポインタロック中だけ操作を受け付ける
-    const locked = this.input.isLocked();
+    // 一時停止中は画面を止めたまま描画だけ続ける
+    if (this.paused) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    // ポインタロック中、またはタッチ操作有効のときだけ操作を受け付ける
+    const active = this.input.isActive();
     const inputState = this.input.sample();
-    if (!locked) {
-      // 未ロック時は移動入力を無効化（視点は固定）
+    if (!active) {
+      // 未操作時は移動入力を無効化（視点は固定）
       inputState.forward = 0;
       inputState.right = 0;
       inputState.firing = false;

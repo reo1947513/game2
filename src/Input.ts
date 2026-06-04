@@ -20,6 +20,17 @@ export class Input {
 
   private locked = false;
 
+  // ===== タッチ操作用の状態（スマホ・タブレット） =====
+  // タッチ操作が有効か（有効時はポインタロック無しでも操作を受け付ける）
+  private touchActive = false;
+  private touchForward = 0;
+  private touchRight = 0;
+  private touchFiring = false;
+  private touchAiming = false;
+  private touchSprint = false;
+  private touchCrouch = false;
+  private touchSensitivity = 0.004;
+
   constructor(private canvas: HTMLElement) {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
@@ -102,22 +113,78 @@ export class Input {
     return this.pitch;
   }
 
+  // ===== タッチ操作レイヤーからの入力窓口 =====
+  // タッチ操作の有効・無効を切り替える
+  setTouchActive(active: boolean): void {
+    this.touchActive = active;
+  }
+
+  // 操作を受け付けてよい状態か（ポインタロック中、またはタッチ操作有効）
+  isActive(): boolean {
+    return this.locked || this.touchActive;
+  }
+
+  // 移動スティックの倒し具合（前後・左右、それぞれ -1〜1）
+  setTouchMove(forward: number, right: number): void {
+    this.touchForward = forward;
+    this.touchRight = right;
+  }
+
+  // 画面ドラッグによる視点移動。マウス移動と同じ向きで反映する。
+  applyTouchLook(dx: number, dy: number): void {
+    this.yaw -= dx * this.touchSensitivity;
+    this.pitch -= dy * this.touchSensitivity;
+    const limit = Math.PI / 2 - 0.01;
+    if (this.pitch > limit) this.pitch = limit;
+    if (this.pitch < -limit) this.pitch = -limit;
+  }
+
+  // 押しっぱなし系ボタン（射撃・ADS・ダッシュ・しゃがみ）の状態
+  setTouchHold(action: "fire" | "ads" | "sprint" | "crouch", pressed: boolean): void {
+    if (action === "fire") this.touchFiring = pressed;
+    else if (action === "ads") this.touchAiming = pressed;
+    else if (action === "sprint") this.touchSprint = pressed;
+    else if (action === "crouch") this.touchCrouch = pressed;
+  }
+
+  // 押した瞬間系ボタン（キーボードと同じ「キュー」を立てる）
+  queueJump(): void {
+    this.jumpQueued = true;
+  }
+  queueProne(): void {
+    this.proneQueued = true;
+  }
+  queueReload(): void {
+    this.reloadQueued = true;
+  }
+  queueSwitch(kind: WeaponKind): void {
+    this.switchQueued = kind;
+  }
+
   // 毎フレーム呼ぶ。現在の入力をまとめて返す。
   sample(): InputState {
-    const forward =
+    const kbForward =
       (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0);
-    const right =
+    const kbRight =
       (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0);
+
+    // キーボードとタッチの移動入力を合算し、-1〜1に収める
+    const forward = Math.max(-1, Math.min(1, kbForward + this.touchForward));
+    const right = Math.max(-1, Math.min(1, kbRight + this.touchRight));
 
     const state: InputState = {
       forward,
       right,
-      sprint: this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"),
-      crouch: this.keys.has("ControlLeft") || this.keys.has("ControlRight"),
+      sprint:
+        this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.touchSprint,
+      crouch:
+        this.keys.has("ControlLeft") ||
+        this.keys.has("ControlRight") ||
+        this.touchCrouch,
       jumpPressed: this.jumpQueued,
       pronePressed: this.proneQueued,
-      firing: this.mouseDownLeft,
-      aiming: this.mouseDownRight,
+      firing: this.mouseDownLeft || this.touchFiring,
+      aiming: this.mouseDownRight || this.touchAiming,
       reloadPressed: this.reloadQueued,
       switchTo: this.switchQueued,
       yaw: this.yaw,

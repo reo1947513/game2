@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { InputState, WeaponKind, WeaponSpec } from "./types";
 import { HUD } from "./HUD";
-import { Stage } from "./Stage";
+import { Stage, Target } from "./Stage";
 import { Input } from "./Input";
 
 // 1丁分の見た目と状態
@@ -40,6 +40,12 @@ export class WeaponSystem {
 
   private raycaster = new THREE.Raycaster();
   private shootables: THREE.Object3D[] = [];
+
+  // モード側が射撃結果を受け取るためのフック（未設定なら通常動作）。
+  // targetHitHook が true を返したら、的の通常処理（倒す・累積ダメージ）は行わない。
+  targetHitHook: ((t: Target, now: number) => boolean) | null = null;
+  // 発砲のたびに1回呼ばれる（命中率の計算などに使う）。
+  shotFiredHook: (() => void) | null = null;
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -281,6 +287,9 @@ export class WeaponSystem {
   }
 
   private fire(w: WeaponInstance, input: InputState, playerSpeed: number): void {
+    // モードへ「発砲した」ことを伝える（命中率の計算用）
+    if (this.shotFiredHook) this.shotFiredHook();
+
     // 弾の向き＝カメラ正面に拡散を加える
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
@@ -307,17 +316,24 @@ export class WeaponSystem {
       const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
       if (target) {
         this.hud.flashHitmarker();
-        // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
-        if (w.spec.damage >= 50) {
-          this.stage.onTargetHit(target, performance.now() / 1000);
-        } else {
-          const mat = target.mesh.material as THREE.MeshStandardMaterial;
-          mat.emissive.set(0xff6644);
-          // 連続ヒットで倒す簡易処理
-          target.userHits = (target.userHits ?? 0) + w.spec.damage;
-          if (target.userHits >= 100) {
-            target.userHits = 0;
+        // モードのフックがあればそちらに任せる。処理されなければ通常動作。
+        let handled = false;
+        if (this.targetHitHook) {
+          handled = this.targetHitHook(target, performance.now() / 1000);
+        }
+        if (!handled) {
+          // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
+          if (w.spec.damage >= 50) {
             this.stage.onTargetHit(target, performance.now() / 1000);
+          } else {
+            const mat = target.mesh.material as THREE.MeshStandardMaterial;
+            mat.emissive.set(0xff6644);
+            // 連続ヒットで倒す簡易処理
+            target.userHits = (target.userHits ?? 0) + w.spec.damage;
+            if (target.userHits >= 100) {
+              target.userHits = 0;
+              this.stage.onTargetHit(target, performance.now() / 1000);
+            }
           }
         }
       }
@@ -396,8 +412,8 @@ export class WeaponSystem {
     const adsDone = this.adsProgress > 0.6;
     if (adsDone) {
       // 覗き込み完了時はドットサイト（中央レティクル）を表示します。
-      // スナイパー専用の円形スコープ（視界を黒く覆うマスク）は廃止しました。
-      // ただしFOVのズーム自体は updateFov() でそのまま効くため、
+      // スナイパー専用の円形スコープ（視界を黒く覆うマスク）は廃止しています。
+      // FOVのズーム自体は updateFov() でそのまま効くため、
       // スナイパーで遠くを大きく狙える操作感は維持されます。
       this.hud.showReflex();
     } else {

@@ -29,10 +29,10 @@ export class Stage {
 
   // ----- ライティング -----
   private buildLights(scene: THREE.Scene): void {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambient);
 
-    const sun = new THREE.DirectionalLight(0xfff1d0, 1.3);
+    const sun = new THREE.DirectionalLight(0xfff1d0, 2.0);
     sun.position.set(30, 50, 20);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -46,13 +46,14 @@ export class Stage {
     scene.add(sun);
 
     // 黒〜濃紺の背景に金色系のフォグで、指定の雰囲気に寄せています
-    const fill = new THREE.HemisphereLight(0x6a7a99, 0x1a140a, 0.4);
+    const fill = new THREE.HemisphereLight(0x6a7a99, 0x1a140a, 0.9);
     scene.add(fill);
   }
 
   private buildEnvironment(scene: THREE.Scene): void {
-    scene.background = new THREE.Color(0x0a0c10);
-    scene.fog = new THREE.Fog(0x0a0c10, 40, 130);
+    // 暗すぎないよう背景をやや持ち上げ、霧も遠くからに緩めてステージを見やすくする
+    scene.background = new THREE.Color(0x161a22);
+    scene.fog = new THREE.Fog(0x161a22, 70, 220);
   }
 
   // 箱を作って「見た目」と「当たり判定」を同時に登録する補助関数

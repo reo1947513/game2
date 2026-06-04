@@ -62,6 +62,9 @@ export class Game {
   // クリック（タップ）されたら開始。タッチ端末ではタッチ操作、それ以外はポインタロック。
   start(): void {
     if (TouchControls.isTouchDevice()) {
+      // スマホ・タブレット向けCSS（回転案内・モバイルHUD最適化）を有効化する目印。
+      // 縦画面の回転案内や開始画面の出し分けは、このクラスを起点にCSSで制御する。
+      document.body.classList.add("touch-device");
       this.touch.enable();
     } else {
       this.input.requestLock();

@@ -394,9 +394,11 @@ export class WeaponSystem {
     this.hud.setWeaponName(w.spec.displayName);
 
     const adsDone = this.adsProgress > 0.6;
-    if (adsDone && this.spec.scope) {
-      this.hud.showScope();
-    } else if (adsDone && !this.spec.scope) {
+    if (adsDone) {
+      // 覗き込み完了時はドットサイト（中央レティクル）を表示します。
+      // スナイパー専用の円形スコープ（視界を黒く覆うマスク）は廃止しました。
+      // ただしFOVのズーム自体は updateFov() でそのまま効くため、
+      // スナイパーで遠くを大きく狙える操作感は維持されます。
       this.hud.showReflex();
     } else {
       this.hud.showCrosshair();

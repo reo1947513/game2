@@ -5,6 +5,10 @@ import { WeaponKind } from "./types";
 // 画面上に移動スティック・視点エリア・各アクションのボタンを生成し、
 // その入力を Input クラスへ流し込みます。配置・大きさ・透明度を設定でき、
 // 3つの保存枠に記録できます。ゲーム中の一時停止メニューから設定を開きます。
+//
+// スプリント（ダッシュ）は専用ボタンを廃止し、移動スティックを前方へ深く倒し
+// 続けると一定時間（SPRINT_DELAY）で発動する方式にしています。
+// 武器切替はトグル式の1ボタンに統合しています。
 
 type ActionType = "hold" | "tap";
 
@@ -32,8 +36,12 @@ interface TouchCallbacks {
 
 type Mode = "play" | "pause" | "settings" | "edit";
 
-// 押しっぱなし系のアクション
+// 押しっぱなし系のアクション（sprintはスティック前傾で制御するためボタンは持たない）
 type HoldKey = "fire" | "ads" | "sprint" | "crouch";
+
+// スプリント発動までの保持時間(ミリ秒)と、前方「深倒し」と判定するしきい値(0〜1)
+const SPRINT_DELAY = 500;
+const SPRINT_DEEP = 0.85;
 
 const ACTIONS: ActionDef[] = [
   { key: "fire", label: "射撃", type: "hold" },
@@ -42,9 +50,8 @@ const ACTIONS: ActionDef[] = [
   { key: "reload", label: "R", type: "tap" },
   { key: "crouch", label: "しゃがむ", type: "hold" },
   { key: "prone", label: "伏せ", type: "tap" },
-  { key: "sprint", label: "ダッシュ", type: "hold" },
-  { key: "weapon1", label: "武器1", type: "tap" },
-  { key: "weapon2", label: "武器2", type: "tap" },
+  // 武器切替トグル（タップでアサルト⇔スナイパー）。ラベルは現在の武器名を表示。
+  { key: "weapon", label: "ASSAULT", type: "tap" },
 ];
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
@@ -59,9 +66,7 @@ const DEFAULT_LAYOUT: Layout = {
     reload: { x: 64, y: 84 },
     crouch: { x: 80, y: 86 },
     prone: { x: 55, y: 84 },
-    sprint: { x: 24, y: 50 },
-    weapon1: { x: 46, y: 10 },
-    weapon2: { x: 54, y: 10 },
+    weapon: { x: 50, y: 10 },
   },
 };
 
@@ -130,6 +135,13 @@ export class TouchControls {
   private dragKey: string | null = null;
   private dragEl: HTMLElement | null = null;
   private dragId: number | null = null;
+
+  // 武器切替トグルの現在状態（ゲーム開始時はアサルト）
+  private touchWeapon: WeaponKind = WeaponKind.Assault;
+
+  // スティック前傾スプリントの状態
+  private sprintActive = false;
+  private sprintTimer: number | null = null;
 
   constructor(private input: Input, private callbacks: TouchCallbacks) {
     this.layout = this.loadLast();
@@ -201,6 +213,15 @@ export class TouchControls {
     // 配置編集ボタン
     const btnEdit = el("button", "tc-menu-btn", "ボタンの配置を編集");
     setCard.appendChild(btnEdit);
+
+    // 操作のヒント（スプリントの操作方法）
+    setCard.appendChild(
+      el(
+        "div",
+        "tc-section-label",
+        "移動スティックを前へ深く倒し続けるとダッシュします"
+      )
+    );
 
     // 保存枠（3つ）
     setCard.appendChild(el("div", "tc-section-label", "配置パターンの保存（3つまで）"));
@@ -335,6 +356,8 @@ export class TouchControls {
       this.joyId = null;
       this.joyKnob.style.transform = "translate(-50%, -50%)";
       this.input.setTouchMove(0, 0);
+      // スティックを離したらスプリントも解除
+      this.clearSprint();
     };
     this.joyBase.addEventListener("pointerup", end);
     this.joyBase.addEventListener("pointercancel", end);
@@ -353,6 +376,36 @@ export class TouchControls {
     const forward = clamp(-dy / maxR, -1, 1);
     const right = clamp(dx / maxR, -1, 1);
     this.input.setTouchMove(forward, right);
+    // 前方への深倒し具合からスプリントを判定する
+    this.updateSprint(forward);
+  }
+
+  // ---- スティック前傾スプリント ----
+  // 前方へ深く倒し続けると SPRINT_DELAY 経過で発動。浅くする/離すと解除する。
+  private updateSprint(forward: number): void {
+    const deep = forward >= SPRINT_DEEP;
+    if (deep) {
+      // すでに発動中、またはタイマー作動中なら二重に仕掛けない
+      if (this.sprintActive || this.sprintTimer !== null) return;
+      this.sprintTimer = window.setTimeout(() => {
+        this.sprintTimer = null;
+        this.sprintActive = true;
+        this.input.setTouchHold("sprint", true);
+      }, SPRINT_DELAY);
+    } else {
+      this.clearSprint();
+    }
+  }
+
+  private clearSprint(): void {
+    if (this.sprintTimer !== null) {
+      window.clearTimeout(this.sprintTimer);
+      this.sprintTimer = null;
+    }
+    if (this.sprintActive) {
+      this.sprintActive = false;
+      this.input.setTouchHold("sprint", false);
+    }
   }
 
   // ---- アクションボタン ----
@@ -408,12 +461,20 @@ export class TouchControls {
       case "prone":
         this.input.queueProne();
         break;
-      case "weapon1":
-        this.input.queueSwitch(WeaponKind.Assault);
+      case "weapon":
+        this.toggleWeapon();
         break;
-      case "weapon2":
-        this.input.queueSwitch(WeaponKind.Sniper);
-        break;
+    }
+  }
+
+  // 武器切替（1ボタンのトグル）。タップでアサルト⇔スナイパーを交互に切り替える。
+  private toggleWeapon(): void {
+    this.touchWeapon =
+      this.touchWeapon === WeaponKind.Assault ? WeaponKind.Sniper : WeaponKind.Assault;
+    this.input.queueSwitch(this.touchWeapon);
+    const btn = this.btnMap["weapon"];
+    if (btn) {
+      btn.textContent = this.touchWeapon === WeaponKind.Assault ? "ASSAULT" : "SNIPER";
     }
   }
 
@@ -444,6 +505,13 @@ export class TouchControls {
   // ---- モード切替（表示の出し分け） ----
   private setMode(mode: Mode): void {
     this.mode = mode;
+    // プレイ画面を離れるときは移動・スプリントを確実に止める
+    if (mode !== "play") {
+      this.joyId = null;
+      this.joyKnob.style.transform = "translate(-50%, -50%)";
+      this.input.setTouchMove(0, 0);
+      this.clearSprint();
+    }
     const playing = mode === "play";
     const editing = mode === "edit";
     this.lookLayer.style.display = playing ? "block" : "none";

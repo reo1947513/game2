@@ -9,7 +9,6 @@ export class HUD {
   private chRight = this.crosshair.querySelector(".right") as HTMLElement;
 
   private reflex = document.getElementById("reflex") as HTMLElement;
-  private scope = document.getElementById("scope") as HTMLElement;
   private hitmarker = document.getElementById("hitmarker") as HTMLElement;
 
   private ammoMag = document.getElementById("ammo-mag") as HTMLElement;
@@ -38,21 +37,15 @@ export class HUD {
     this.speedLabel.textContent = `SPEED ${speed.toFixed(1)}`;
   }
 
-  // 表示モードの切替（腰だめ十字／ドットサイト／スナイパースコープ）
+  // 表示モードの切替（腰だめ十字／ドットサイト）
+  // スナイパー専用の円形スコープは廃止し、覗き込み時もドットサイトを表示します。
   showCrosshair(): void {
     this.crosshair.style.display = "block";
     this.reflex.style.display = "none";
-    this.scope.style.display = "none";
   }
   showReflex(): void {
     this.crosshair.style.display = "none";
     this.reflex.style.display = "block";
-    this.scope.style.display = "none";
-  }
-  showScope(): void {
-    this.crosshair.style.display = "none";
-    this.reflex.style.display = "none";
-    this.scope.style.display = "block";
   }
 
   // 腰だめ十字の開き具合（移動・射撃で広がる拡散の可視化）

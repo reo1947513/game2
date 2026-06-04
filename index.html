@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>ARENA STRIKE - テストステージ</title>
     <style>
       * {
@@ -88,7 +88,8 @@
         transform: translate(-50%, -50%);
       }
 
-      /* アサルト等のドットサイト（覗き込み時の中央レティクル） */
+      /* アサルト等のドットサイト（覗き込み時の中央レティクル）。
+         スナイパーの覗き込みでもこのドットサイトを使います。 */
       #reflex {
         position: absolute;
         left: 50%;
@@ -100,65 +101,6 @@
         box-shadow: 0 0 8px 2px rgba(255, 59, 48, 0.7);
         transform: translate(-50%, -50%);
         display: none;
-      }
-
-      /* スナイパー専用スコープ（円形マスク＋十字線） */
-      #scope {
-        position: absolute;
-        inset: 0;
-        display: none;
-        z-index: 11;
-      }
-      #scope .mask {
-        position: absolute;
-        inset: 0;
-        /* 中央だけ透過し、外周を黒く塗りつぶす */
-        background: radial-gradient(
-          circle at 50% 50%,
-          rgba(0, 0, 0, 0) 0,
-          rgba(0, 0, 0, 0) 32vh,
-          rgba(0, 0, 0, 0.98) 32.4vh,
-          rgba(0, 0, 0, 1) 100%
-        );
-      }
-      #scope .ring {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 64vh;
-        height: 64vh;
-        transform: translate(-50%, -50%);
-        border: 2px solid rgba(0, 0, 0, 0.9);
-        border-radius: 50%;
-        box-shadow: inset 0 0 40px 10px rgba(0, 0, 0, 0.6);
-      }
-      #scope .cross-v,
-      #scope .cross-h {
-        position: absolute;
-        background: rgba(0, 0, 0, 0.85);
-      }
-      #scope .cross-v {
-        left: 50%;
-        top: 50%;
-        width: 1px;
-        height: 64vh;
-        transform: translate(-50%, -50%);
-      }
-      #scope .cross-h {
-        left: 50%;
-        top: 50%;
-        height: 1px;
-        width: 64vh;
-        transform: translate(-50%, -50%);
-      }
-      #scope .center {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 6px;
-        height: 6px;
-        border: 1px solid rgba(255, 30, 30, 0.9);
-        transform: translate(-50%, -50%);
       }
 
       /* 右下：弾薬と武器名 */
@@ -300,6 +242,104 @@
       #overlay.hidden {
         display: none;
       }
+
+      /* ===== 横画面案内（縦画面のスマホ・タブレット向け） =====
+         ブラウザは画面の向きを完全に強制できない（特にiOS）ため、
+         縦画面のときは案内を最前面に出して操作を覆い、横にしてもらう方式です。
+         表示制御は純CSS。タッチ端末(body.touch-device)かつ縦画面のときだけ出します。 */
+      #rotate-notice {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        text-align: center;
+        background: #050608;
+        padding: 24px;
+      }
+      #rotate-notice .icon {
+        font-size: 64px;
+        animation: rotate-hint 1.8s ease-in-out infinite;
+      }
+      #rotate-notice .title {
+        font-size: 20px;
+        font-weight: 800;
+        color: #ffcc55;
+        letter-spacing: 1px;
+      }
+      #rotate-notice .desc {
+        font-size: 14px;
+        color: #c8ccd0;
+        line-height: 1.8;
+      }
+      @keyframes rotate-hint {
+        0%,
+        100% {
+          transform: rotate(-12deg);
+        }
+        50% {
+          transform: rotate(78deg);
+        }
+      }
+      /* タッチ端末かつ縦画面のときだけ案内を表示（既定は上の display:none） */
+      @media (orientation: portrait) {
+        body.touch-device #rotate-notice {
+          display: flex;
+        }
+      }
+
+      /* ===== スマホ・タブレット横画面でのHUD最適化 =====
+         小さめの横画面では各HUDのフォント・余白を縮め、ノッチ等の
+         セーフエリア(env)を避けて要素を配置します。 */
+      @media (orientation: landscape) and (max-height: 520px) {
+        body.touch-device #ammo {
+          right: calc(16px + env(safe-area-inset-right, 0px));
+          bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+        body.touch-device #ammo .count {
+          font-size: 28px;
+        }
+        body.touch-device #ammo .count .reserve {
+          font-size: 15px;
+        }
+        body.touch-device #ammo .weapon {
+          font-size: 12px;
+        }
+        body.touch-device #state {
+          left: calc(16px + env(safe-area-inset-left, 0px));
+          bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+          font-size: 11px;
+          line-height: 1.6;
+        }
+        body.touch-device #state .stance {
+          font-size: 15px;
+        }
+        body.touch-device #crosshair {
+          width: 30px;
+          height: 30px;
+        }
+      }
+
+      /* スマホ・タブレットでは開始画面のキーボード説明を隠し、文字を小さめに */
+      body.touch-device #overlay .keys {
+        display: none;
+      }
+      @media (max-height: 520px) {
+        body.touch-device #overlay h1 {
+          font-size: 30px;
+          letter-spacing: 4px;
+        }
+        body.touch-device #overlay .sub {
+          font-size: 12px;
+        }
+        body.touch-device #overlay .start {
+          font-size: 14px;
+          padding: 10px 22px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -315,14 +355,6 @@
       </div>
 
       <div id="reflex"></div>
-
-      <div id="scope">
-        <div class="mask"></div>
-        <div class="ring"></div>
-        <div class="cross-v"></div>
-        <div class="cross-h"></div>
-        <div class="center"></div>
-      </div>
 
       <div id="hitmarker">
         <div class="m m1"></div>
@@ -353,6 +385,12 @@
         武器切替 <b>1</b>＝アサルト <b>2</b>＝スナイパー ／ ポインタ解除 <b>Esc</b>
       </div>
       <div class="start">クリックして開始</div>
+    </div>
+
+    <div id="rotate-notice">
+      <div class="icon">📱</div>
+      <div class="title">横画面でプレイしてください</div>
+      <div class="desc">端末を横向きにすると<br />ゲーム画面に戻ります</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

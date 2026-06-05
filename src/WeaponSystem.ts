@@ -3,6 +3,7 @@ import { InputState, WeaponKind, WeaponSpec } from "./types";
 import { HUD } from "./HUD";
 import { Stage, Target } from "./Stage";
 import { Input } from "./Input";
+import { Scope } from "./Scope";
 
 // 1丁分の見た目と状態
 interface WeaponInstance {
@@ -34,6 +35,9 @@ export class WeaponSystem {
   private muzzleTimer = 0;
 
   private bobTime = 0;
+
+  // 覗き込み時の円形スコープ枠（スナイパー用）
+  private scope = new Scope();
 
   // リロード動作の進み具合（0=通常、1=最も大きく動いた瞬間）。見た目だけに使います。
   private reloadAnim = 0;
@@ -414,13 +418,16 @@ export class WeaponSystem {
     this.hud.setWeaponName(w.spec.displayName);
 
     const adsDone = this.adsProgress > 0.6;
-    if (adsDone) {
-      // 覗き込み完了時はドットサイト（中央レティクル）を表示します。
-      // スナイパー専用の円形スコープ（視界を黒く覆うマスク）は廃止しています。
-      // FOVのズーム自体は updateFov() でそのまま効くため、
-      // スナイパーで遠くを大きく狙える操作感は維持されます。
+    if (adsDone && this.spec.scope) {
+      // スナイパー：周りを円形に囲むスコープ枠を出す。中央のドットは残す。
+      this.scope.show();
+      this.hud.showReflex();
+    } else if (adsDone) {
+      // アサルトなど：ドットサイト
+      this.scope.hide();
       this.hud.showReflex();
     } else {
+      this.scope.hide();
       this.hud.showCrosshair();
       const moveFactor = Math.min(1, playerSpeed / this.SPEED_REF);
       const gap = 6 + moveFactor * 18 + this.fireBloom * 1.5;

@@ -87,6 +87,15 @@ export class WeaponSystem {
     return this.weapons.get(this.current)!.spec;
   }
 
+  // 弾薬アイテムを拾ったとき：全武器の予備弾を上限まで補充する
+  addAmmo(amount: number): void {
+    for (const w of this.weapons.values()) {
+      w.reserve = Math.min(w.spec.reserveMax, w.reserve + amount);
+    }
+    const w = this.weapons.get(this.current)!;
+    this.hud.setAmmo(w.mag, w.reserve);
+  }
+
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
   private metal(color: number): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({

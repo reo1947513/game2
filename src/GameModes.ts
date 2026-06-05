@@ -5,6 +5,7 @@ import { ModeUI } from "./ModeUI";
 import { PlayerController } from "./PlayerController";
 import { Health } from "./Health";
 import { EnemyUnit } from "./Enemy";
+import { Pickup, PickupKind } from "./Pickup";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -478,6 +479,7 @@ export class WaveSurvival implements GameMode {
 
   private ctx: GameContext | null = null;
   private enemies: WaveEnemy[] = [];
+  private pickups: Pickup[] = [];
   private wave = 0;
   private kills = 0;
   private alive = false;
@@ -487,6 +489,7 @@ export class WaveSurvival implements GameMode {
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
     this.enemies = [];
+    this.pickups = [];
     this.wave = 0;
     this.kills = 0;
     this.alive = true;
@@ -593,8 +596,35 @@ export class WaveSurvival implements GameMode {
     if (ei >= 0) this.enemies.splice(ei, 1);
     if (killed) {
       this.kills++;
+      this.dropItems(e);
       this.updateHud();
     }
+  }
+
+  // 撃破した敵の位置にアイテムを落とす。
+  // ボスは確定で弾薬と回復をまとめて落とし、通常の敵は確率で落とす。
+  private dropItems(e: WaveEnemy): void {
+    if (!this.ctx) return;
+    const p = e.unit.group.position;
+    if (e.behavior === "boss") {
+      this.spawnPickup("health", p.x - 1, p.z);
+      this.spawnPickup("health", p.x + 1, p.z);
+      this.spawnPickup("ammo", p.x, p.z - 1);
+      this.spawnPickup("ammo", p.x, p.z + 1);
+      return;
+    }
+    if (Math.random() < 0.25) this.spawnPickup("ammo", p.x, p.z);
+    if (Math.random() < 0.18) this.spawnPickup("health", p.x, p.z);
+  }
+
+  // アイテムを1個、範囲内に収めて出す
+  private spawnPickup(kind: PickupKind, x: number, z: number): void {
+    if (!this.ctx) return;
+    const cx = Math.max(-29, Math.min(29, x));
+    const cz = Math.max(-29, Math.min(29, z));
+    const pk = new Pickup(kind, cx, cz);
+    this.ctx.scene.add(pk.group);
+    this.pickups.push(pk);
   }
 
   update(ctx: GameContext, dt: number, now: number): void {
@@ -676,6 +706,23 @@ export class WaveSurvival implements GameMode {
       playerDamaged = true;
     }
 
+    // 落ちているアイテムを回しながら浮かせ、プレイヤーが近づいたら拾う
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const pk = this.pickups[i];
+      pk.update(dt);
+      const pdx = this.eye.x - pk.group.position.x;
+      const pdz = this.eye.z - pk.group.position.z;
+      if (Math.hypot(pdx, pdz) < 1.6) {
+        if (pk.kind === "ammo") {
+          ctx.weapons.addAmmo(60);
+        } else {
+          ctx.health.heal(30);
+        }
+        pk.dispose(ctx.scene);
+        this.pickups.splice(i, 1);
+      }
+    }
+
     // どの攻撃でも、被弾の結果として体力が尽きたら終了
     if (playerDamaged && ctx.health.isDead()) {
       this.gameOver(ctx);
@@ -719,6 +766,9 @@ export class WaveSurvival implements GameMode {
       if (hi >= 0) ctx.weapons.enemyTargets.splice(hi, 1);
     }
     this.enemies = [];
+    // 残っているアイテムも片付ける
+    for (const pk of this.pickups) pk.dispose(ctx.scene);
+    this.pickups = [];
     ctx.weapons.enemyHitHook = null;
     ctx.health.hide();
     ctx.ui.showHud(false);

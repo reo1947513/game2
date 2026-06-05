@@ -470,11 +470,8 @@ export class WaveSurvival implements GameMode {
       e.unit.faceTo(dx, dz);
 
       if (d > 1.3) {
-        // 間合いの外：歩いて近づく
-        if (d > 0.001) {
-          e.unit.group.position.x += (dx / d) * e.speed * dt;
-          e.unit.group.position.z += (dz / d) * e.speed * dt;
-        }
+        // 間合いの外：壁やブロックを避けて歩いて近づく
+        e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
         e.unit.update(dt, "walk");
       } else {
         // 間合いの内：止まって攻撃モーション
@@ -660,11 +657,8 @@ export class BotDeathmatch implements GameMode {
       b.unit.faceTo(dx, dz);
 
       if (d > 8) {
-        // 遠い：歩いて近づく
-        if (d > 0.001) {
-          b.unit.group.position.x += (dx / d) * this.BOT_SPEED * dt;
-          b.unit.group.position.z += (dz / d) * this.BOT_SPEED * dt;
-        }
+        // 遠い：壁やブロックを避けて歩いて近づく
+        b.unit.moveToward(this.eye.x, this.eye.z, this.BOT_SPEED, dt, ctx.stage.colliders);
         b.unit.update(dt, "walk");
       } else {
         // 射程内：止まって撃つ

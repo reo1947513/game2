@@ -26,6 +26,10 @@ export class EnemyUnit {
   private hitMat: THREE.MeshBasicMaterial;
   private geos: THREE.BufferGeometry[] = [];
 
+  // 衝突判定用のおおよその寸法（半径と高さ）
+  private readonly radius = 0.4;
+  private readonly bodyHeight = 2.0;
+
   constructor() {
     this.group = new THREE.Group();
 
@@ -116,6 +120,54 @@ export class EnemyUnit {
   // 足元を地面に合わせて位置を置く
   setGround(x: number, z: number): void {
     this.group.position.set(x, 0, z);
+  }
+
+  // 目標へ向かって、壁やブロックを避けながら水平移動する。
+  // 横と奥行きを別々に動かし、ぶつかった方向だけ取り消すので、壁沿いに滑れる。
+  moveToward(
+    tx: number,
+    tz: number,
+    speed: number,
+    dt: number,
+    colliders: THREE.Box3[]
+  ): void {
+    const dx = tx - this.group.position.x;
+    const dz = tz - this.group.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.001) return;
+    const stepX = (dx / d) * speed * dt;
+    const stepZ = (dz / d) * speed * dt;
+
+    // 横方向に動かし、ぶつかったら戻す
+    this.group.position.x += stepX;
+    if (this.hitsCollider(colliders)) this.group.position.x -= stepX;
+
+    // 奥行き方向に動かし、ぶつかったら戻す
+    this.group.position.z += stepZ;
+    if (this.hitsCollider(colliders)) this.group.position.z -= stepZ;
+  }
+
+  // 今の位置で、いずれかのブロックと重なっているか
+  private hitsCollider(colliders: THREE.Box3[]): boolean {
+    const minX = this.group.position.x - this.radius;
+    const maxX = this.group.position.x + this.radius;
+    const minZ = this.group.position.z - this.radius;
+    const maxZ = this.group.position.z + this.radius;
+    const minY = this.group.position.y;
+    const maxY = this.group.position.y + this.bodyHeight;
+    for (const c of colliders) {
+      if (
+        maxX > c.min.x &&
+        minX < c.max.x &&
+        maxZ > c.min.z &&
+        minZ < c.max.z &&
+        maxY > c.min.y &&
+        minY < c.max.y
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // 進む方向（水平）へ体を向ける

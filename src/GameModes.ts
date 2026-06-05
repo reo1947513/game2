@@ -401,6 +401,9 @@ type WaveEnemy = {
   shielded: boolean;
   nextShot: number; // 遠距離型が次に撃てる時刻
   flying: boolean;
+  knockback: number; // ノックバック残り時間（秒）。0より大きい間は吹き飛び中。
+  kbx: number; // ノックバックの向きX（正規化）
+  kbz: number; // ノックバックの向きZ（正規化）
 };
 // 標準：バランス型（オレンジ）
 const WAVE_STANDARD: WaveEnemyType = {
@@ -570,6 +573,9 @@ export class WaveSurvival implements GameMode {
       shielded: type.shielded,
       nextShot: performance.now() / 1000 + 1 + Math.random() * 1.5,
       flying: type.flying ?? false,
+      knockback: 0,
+      kbx: 0,
+      kbz: 0,
     });
   }
 
@@ -654,17 +660,12 @@ export class WaveSurvival implements GameMode {
       const dz = e.unit.group.position.z - this.eye.z;
       const d = Math.hypot(dx, dz);
       if (d > 2.5) continue;
-      // プレイヤーから外向きへ弾く
+      // プレイヤーから外向きへ、時間をかけて滑らかに吹き飛ばす
       const nx = d > 0.001 ? dx / d : 0;
       const nz = d > 0.001 ? dz / d : 1;
-      e.unit.group.position.x = Math.max(
-        -29,
-        Math.min(29, e.unit.group.position.x + nx * 4)
-      );
-      e.unit.group.position.z = Math.max(
-        -29,
-        Math.min(29, e.unit.group.position.z + nz * 4)
-      );
+      e.knockback = 0.3;
+      e.kbx = nx;
+      e.kbz = nz;
       e.hp -= 20;
       hitAny = true;
       if (e.hp <= 0) this.removeEnemy(e, true);
@@ -694,6 +695,20 @@ export class WaveSurvival implements GameMode {
       const dz = this.eye.z - e.unit.group.position.z;
       const d = Math.hypot(dx, dz);
       e.unit.faceTo(dx, dz);
+
+      // ノックバック中はAIを止めて、後方へ滑らかに吹き飛ばす
+      if (e.knockback > 0) {
+        e.knockback -= dt;
+        e.unit.moveToward(
+          e.unit.group.position.x + e.kbx,
+          e.unit.group.position.z + e.kbz,
+          16,
+          dt,
+          ctx.stage.colliders
+        );
+        e.unit.update(dt, "idle");
+        continue;
+      }
 
       if (e.behavior === "ranged") {
         // 遠距離：中距離まで来たら止まって撃つ

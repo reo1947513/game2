@@ -420,6 +420,7 @@ export class WaveSurvival implements GameMode {
       );
       this.ctx.scene.add(unit.group);
       this.ctx.weapons.enemyTargets.push(unit.hitbox);
+      this.ctx.weapons.enemyTargets.push(unit.headHitbox);
       this.enemies.push({ unit, hp: 1, speed });
     }
     this.updateHud();
@@ -427,7 +428,9 @@ export class WaveSurvival implements GameMode {
 
   // 弾が敵に当たったとき
   private onEnemyShot(obj: THREE.Object3D): void {
-    const e = this.enemies.find((x) => x.unit.hitbox === obj);
+    const e = this.enemies.find(
+      (x) => x.unit.hitbox === obj || x.unit.headHitbox === obj
+    );
     if (!e) return;
     e.hp--;
     if (e.hp <= 0) this.removeEnemy(e, true);
@@ -443,6 +446,8 @@ export class WaveSurvival implements GameMode {
     e.unit.dispose();
     const ti = this.ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
     if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+    const hi = this.ctx.weapons.enemyTargets.indexOf(e.unit.headHitbox);
+    if (hi >= 0) this.ctx.weapons.enemyTargets.splice(hi, 1);
     const ei = this.enemies.indexOf(e);
     if (ei >= 0) this.enemies.splice(ei, 1);
     if (killed) {
@@ -464,7 +469,7 @@ export class WaveSurvival implements GameMode {
       const d = Math.hypot(dx, dz);
       e.unit.faceTo(dx, dz);
 
-      if (d > 1.8) {
+      if (d > 1.3) {
         // 間合いの外：歩いて近づく
         if (d > 0.001) {
           e.unit.group.position.x += (dx / d) * e.speed * dt;
@@ -521,6 +526,8 @@ export class WaveSurvival implements GameMode {
       e.unit.dispose();
       const ti = ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
       if (ti >= 0) ctx.weapons.enemyTargets.splice(ti, 1);
+      const hi = ctx.weapons.enemyTargets.indexOf(e.unit.headHitbox);
+      if (hi >= 0) ctx.weapons.enemyTargets.splice(hi, 1);
     }
     this.enemies = [];
     ctx.weapons.enemyHitHook = null;
@@ -591,6 +598,7 @@ export class BotDeathmatch implements GameMode {
     unit.setGround(x, z);
     this.ctx.scene.add(unit.group);
     this.ctx.weapons.enemyTargets.push(unit.hitbox);
+    this.ctx.weapons.enemyTargets.push(unit.headHitbox);
     this.bots.push({
       unit,
       hp: this.BOT_HP,
@@ -601,7 +609,9 @@ export class BotDeathmatch implements GameMode {
   // 弾がボットに当たったとき。武器の威力ぶん体力を削る。
   private onBotShot(obj: THREE.Object3D, damage: number): void {
     const now = performance.now() / 1000;
-    const b = this.bots.find((x) => x.unit.hitbox === obj);
+    const b = this.bots.find(
+      (x) => x.unit.hitbox === obj || x.unit.headHitbox === obj
+    );
     if (!b) return;
     b.hp -= damage;
     if (b.hp <= 0) this.killBot(b, now);
@@ -617,6 +627,8 @@ export class BotDeathmatch implements GameMode {
     b.unit.dispose();
     const ti = this.ctx.weapons.enemyTargets.indexOf(b.unit.hitbox);
     if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+    const hi = this.ctx.weapons.enemyTargets.indexOf(b.unit.headHitbox);
+    if (hi >= 0) this.ctx.weapons.enemyTargets.splice(hi, 1);
     const bi = this.bots.indexOf(b);
     if (bi >= 0) this.bots.splice(bi, 1);
     this.kills++;
@@ -713,6 +725,8 @@ export class BotDeathmatch implements GameMode {
       b.unit.dispose();
       const ti = ctx.weapons.enemyTargets.indexOf(b.unit.hitbox);
       if (ti >= 0) ctx.weapons.enemyTargets.splice(ti, 1);
+      const hi = ctx.weapons.enemyTargets.indexOf(b.unit.headHitbox);
+      if (hi >= 0) ctx.weapons.enemyTargets.splice(hi, 1);
     }
     this.bots = [];
     this.respawnQueue = [];

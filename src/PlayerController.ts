@@ -166,6 +166,12 @@ export class PlayerController {
     // スライド開始判定：
     // ダッシュ中・地上・十分な速さで、しゃがみを「押した瞬間」に入る
     const crouchPressedNow = input.crouch && !this.prevCrouch;
+
+    // 伏せ中にジャンプ、またはしゃがみを押したら伏せを解除する
+    if (this.proneToggled && (input.jumpPressed || crouchPressedNow)) {
+      this.proneToggled = false;
+    }
+
     if (
       crouchPressedNow &&
       this.grounded &&

@@ -11,6 +11,8 @@ export class EnemyUnit {
   group: THREE.Group;
   // 射撃の当たり判定に使う見えない箱（武器システムへ登録する対象）
   hitbox: THREE.Mesh;
+  // 頭の当たり判定（ヘッドショット用）
+  headHitbox: THREE.Mesh;
 
   private legL: THREE.Group;
   private legR: THREE.Group;
@@ -76,7 +78,8 @@ export class EnemyUnit {
     this.armR = this.makeLimb(0.18, 0.7, 0.39, 1.6);
 
     // 当たり判定（見えない一枚の箱）。武器システムのレイ判定はこれに当たる。
-    const hbG = new THREE.BoxGeometry(0.8, 2.0, 0.8);
+    // 頭と重ならないよう、胴は高さ1.6・中心0.8にする。
+    const hbG = new THREE.BoxGeometry(0.8, 1.6, 0.8);
     this.geos.push(hbG);
     this.hitMat = new THREE.MeshBasicMaterial({
       transparent: true,
@@ -84,8 +87,16 @@ export class EnemyUnit {
       depthWrite: false,
     });
     this.hitbox = new THREE.Mesh(hbG, this.hitMat);
-    this.hitbox.position.y = 1.0;
+    this.hitbox.position.y = 0.8;
     this.group.add(this.hitbox);
+
+    // 頭の当たり判定（ヘッドショット用）。userData.isHead で頭と判別する。
+    const headHbG = new THREE.BoxGeometry(0.55, 0.55, 0.55);
+    this.geos.push(headHbG);
+    this.headHitbox = new THREE.Mesh(headHbG, this.hitMat);
+    this.headHitbox.position.y = 1.9;
+    this.headHitbox.userData.isHead = true;
+    this.group.add(this.headHitbox);
   }
 
   // 肩・股関節を支点にした手足を作る。支点で回すと前後に振れる。

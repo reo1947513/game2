@@ -4,6 +4,7 @@ import { HUD } from "./HUD";
 import { Stage, Target } from "./Stage";
 import { Input } from "./Input";
 import { Scope } from "./Scope";
+import { Hitmarker } from "./Hitmarker";
 
 // 1丁分の見た目と状態
 interface WeaponInstance {
@@ -38,6 +39,9 @@ export class WeaponSystem {
 
   // 覗き込み時の円形スコープ枠（スナイパー用）
   private scope = new Scope();
+
+  // ヘッドショットなどの通知
+  private hitmarker = new Hitmarker();
 
   // リロード動作の進み具合（0=通常、1=最も大きく動いた瞬間）。見た目だけに使います。
   private reloadAnim = 0;
@@ -262,8 +266,9 @@ export class WeaponSystem {
 
   private handleReload(input: InputState, now: number): void {
     const w = this.weapons.get(this.current)!;
+    // 手動リロード、または弾が0になったときの自動リロード
     if (
-      input.reloadPressed &&
+      (input.reloadPressed || w.mag <= 0) &&
       !this.reloading &&
       w.mag < w.spec.magSize &&
       w.reserve > 0
@@ -328,8 +333,11 @@ export class WeaponSystem {
       const obj = hits[0].object;
       // まず「動く敵」かどうかを見る。敵ならモードに処理を任せる。
       if (this.enemyTargets.indexOf(obj) >= 0) {
+        const isHead = obj.userData && obj.userData.isHead === true;
         this.hud.flashHitmarker();
-        if (this.enemyHitHook) this.enemyHitHook(obj, w.spec.damage);
+        if (isHead) this.hitmarker.headshot();
+        const dmg = isHead ? w.spec.damage * 2 : w.spec.damage;
+        if (this.enemyHitHook) this.enemyHitHook(obj, dmg);
       } else {
         const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
         if (target) {

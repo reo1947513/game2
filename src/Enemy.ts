@@ -96,8 +96,8 @@ export class EnemyUnit {
     this.armR = this.makeLimb(0.18, 0.7, 0.39, 1.6);
 
     // 当たり判定（見えない一枚の箱）。武器システムのレイ判定はこれに当たる。
-    // 頭と重ならないよう、胴は高さ1.6・中心0.8にする。
-    const hbG = new THREE.BoxGeometry(0.8, 1.6, 0.8);
+    // 頭と重ならないよう、胴は高さ1.6・中心0.8にする。幅は当てやすさのため広め。
+    const hbG = new THREE.BoxGeometry(1.0, 1.6, 1.0);
     this.geos.push(hbG);
     this.hitMat = new THREE.MeshBasicMaterial({
       transparent: true,
@@ -109,10 +109,10 @@ export class EnemyUnit {
     this.group.add(this.hitbox);
 
     // 頭の当たり判定（ヘッドショット用）。userData.isHead で頭と判別する。
-    const headHbG = new THREE.BoxGeometry(0.55, 0.55, 0.55);
+    const headHbG = new THREE.BoxGeometry(0.7, 0.7, 0.7);
     this.geos.push(headHbG);
     this.headHitbox = new THREE.Mesh(headHbG, this.hitMat);
-    this.headHitbox.position.y = 1.9;
+    this.headHitbox.position.y = 1.95;
     this.headHitbox.userData.isHead = true;
     this.group.add(this.headHitbox);
 

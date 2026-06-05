@@ -658,14 +658,14 @@ export class WaveSurvival implements GameMode {
           contacting = true;
         }
       } else {
-        // 近接：間合いまで近づいて殴る（標準・突撃・重装・盾）
-        if (d > 1.3) {
+        // 近接：密着するまで詰め、近ければ殴る（標準・突撃・重装・盾）
+        // 移動を止める距離・攻撃モーションに入る距離・ダメージが入る距離を分け、
+        // 一定の距離で止まって殴り続けるように見えないようにする。
+        if (d > 0.9) {
           e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
-          e.unit.update(dt, "walk");
-        } else {
-          e.unit.update(dt, "attack");
-          contacting = true;
         }
+        e.unit.update(dt, d < 1.5 ? "attack" : "walk");
+        if (d < 1.2) contacting = true;
       }
     }
 

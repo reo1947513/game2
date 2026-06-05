@@ -8,6 +8,7 @@ import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
+import { KickView } from "./KickView";
 
 // すべてのシステムを組み合わせて毎フレーム動かす中心クラスです。
 export class Game {
@@ -19,6 +20,7 @@ export class Game {
   private stage: Stage;
   private player: PlayerController;
   private weapons: WeaponSystem;
+  private kickView: KickView;
   private hud: HUD;
   private touch: TouchControls;
   private ui: ModeUI;
@@ -61,6 +63,7 @@ export class Game {
     this.player = new PlayerController(this.stage.colliders);
     this.hud = new HUD();
     this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud);
+    this.kickView = new KickView(this.camera);
 
     // タッチ操作レイヤー（スマホ・タブレット用）。一時停止メニューから設定を開く。
     this.touch = new TouchControls(this.input, {
@@ -80,6 +83,7 @@ export class Game {
       player: this.player,
       health: this.health,
       finish: (lines: string[]) => this.onModeFinish(lines),
+      kickView: this.kickView,
     };
 
     // Escなどでポインタロックが外れたら、プレイ中ならモード選択に戻す
@@ -208,6 +212,7 @@ export class Game {
 
     // 武器・的・HUD更新
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
+    this.kickView.update(dt);
     this.stage.updateTargets(now);
     // モードが蹴りや投擲の判定に使えるよう、その瞬間の入力を渡す
     this.ctx.frameInput = inputState;

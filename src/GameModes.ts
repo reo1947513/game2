@@ -7,6 +7,7 @@ import { Health } from "./Health";
 import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
 import { InputState } from "./types";
+import { KickView } from "./KickView";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -20,6 +21,8 @@ export interface GameContext {
   finish: (lines: string[]) => void;
   // Game本体が毎フレーム入れる、その瞬間の入力。モードが蹴り・投擲の判定に使う。
   frameInput?: InputState;
+  // 一人称の蹴りモーション。蹴り発動時に trigger() を呼ぶ。
+  kickView?: KickView;
 }
 
 // 1つの遊び方（モード）の共通の形です。
@@ -123,8 +126,8 @@ export class TargetRush implements GameMode {
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
-    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
+    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -200,8 +203,8 @@ export class MovingRange implements GameMode {
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
 
-    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
+    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -324,8 +327,8 @@ export class Parkour implements GameMode {
     if (this.finished) return;
     ctx.player.getEyePosition(this.eye);
 
-    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
+    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -677,6 +680,7 @@ export class WaveSurvival implements GameMode {
     // 蹴り：クールダウンが明けていて入力があれば、周囲の近い敵を弾く
     if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
       this.nextKickTime = now + 0.8;
+      if (ctx.kickView) ctx.kickView.trigger();
       this.doKick();
     }
 
@@ -953,6 +957,7 @@ export class BotDeathmatch implements GameMode {
     // 蹴り：クールダウンが明けていて入力があれば、周囲の近いボットを弾く
     if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
       this.nextKickTime = now + 0.8;
+      if (ctx.kickView) ctx.kickView.trigger();
       this.doKick();
     }
 

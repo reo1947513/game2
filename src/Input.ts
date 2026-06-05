@@ -64,6 +64,8 @@ export class Input {
       if (code === "KeyR") this.reloadQueued = true;
       if (code === "Digit1") this.switchQueued = WeaponKind.Assault;
       if (code === "Digit2") this.switchQueued = WeaponKind.Sniper;
+      if (code === "Digit3") this.switchQueued = WeaponKind.Shotgun;
+      if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
     }
     this.keys.add(code);
     // ブラウザ既定動作（スクロール等）を抑止

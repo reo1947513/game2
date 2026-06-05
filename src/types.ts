@@ -12,6 +12,8 @@ export enum Stance {
 export enum WeaponKind {
   Assault = "ASSAULT",
   Sniper = "SNIPER",
+  Shotgun = "SHOTGUN",
+  Smg = "SMG",
 }
 
 // 1フレーム分の入力状態のスナップショット
@@ -27,7 +29,7 @@ export interface InputState {
   firing: boolean; // 左クリック保持
   aiming: boolean; // 右クリック保持（ADS）
   reloadPressed: boolean;
-  switchTo: WeaponKind | null; // 1/2キーで武器切替
+  switchTo: WeaponKind | null; // 数字キーで武器切替
   // 視点（マウス移動の累積から計算した向き）
   yaw: number;
   pitch: number;
@@ -48,4 +50,5 @@ export interface WeaponSpec {
   recoilKick: number; // 1発の縦反動（ラジアン）
   adsFov: number; // ADS時の視野角（小さいほど拡大）
   scope: boolean; // 専用スコープ表示を出すか（スナイパー）
+  pellets?: number; // 1回の射撃で飛ぶ弾数（ショットガン用。未指定は1）
 }

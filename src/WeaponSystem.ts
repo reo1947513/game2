@@ -72,9 +72,16 @@ export class WeaponSystem {
 
     this.weapons.set(WeaponKind.Assault, this.buildAssault());
     this.weapons.set(WeaponKind.Sniper, this.buildSniper());
+    this.weapons.set(WeaponKind.Shotgun, this.buildShotgun());
+    this.weapons.set(WeaponKind.Smg, this.buildSmg());
 
-    // 最初はアサルトを表示、スナイパーは隠す
+    // 最初はアサルトを表示、それ以外は隠す
     this.weapons.get(WeaponKind.Sniper)!.model.visible = false;
+    this.weapons.get(WeaponKind.Shotgun)!.model.visible = false;
+    this.weapons.get(WeaponKind.Smg)!.model.visible = false;
+
+    // 初期の武器名を表示する
+    this.hud.setWeaponName(this.weapons.get(this.current)!.spec.displayName);
 
     // 射撃対象となるメッシュを集めておく（壁・床・的など）
     this.stage.group.traverse((o) => {
@@ -210,6 +217,106 @@ export class WeaponSystem {
     };
   }
 
+  private buildShotgun(): WeaponInstance {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.14, 0.6), this.metal(0x33291c));
+    body.position.set(0, 0, -0.3);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.5), this.metal(0x1a1611));
+    barrel.position.set(0, 0.02, -0.78);
+    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.22), this.metal(0x241d14));
+    pump.position.set(0, -0.08, -0.6);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.1), this.metal(0x241d14));
+    grip.position.set(0, -0.15, -0.02);
+    grip.rotation.x = 0.25;
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.28), this.metal(0x33291c));
+    stock.position.set(0, -0.01, 0.12);
+    g.add(body, barrel, pump, grip, stock);
+
+    const muzzle = this.makeMuzzle();
+    muzzle.position.set(0, 0.02, -1.02);
+    g.add(muzzle);
+
+    g.position.set(0.34, -0.3, -0.62);
+    g.rotation.y = 0.06;
+    this.camera.add(g);
+
+    return {
+      spec: {
+        kind: WeaponKind.Shotgun,
+        displayName: "SHOTGUN",
+        magSize: 6,
+        reserveMax: 48,
+        fireInterval: 0.85,
+        automatic: false,
+        damage: 12,
+        reloadTime: 1.0,
+        hipSpread: 0.07,
+        adsSpread: 0.045,
+        recoilKick: 0.045,
+        adsFov: 50,
+        scope: false,
+        pellets: 8,
+      },
+      model: g,
+      muzzle,
+      hipPos: new THREE.Vector3(0.34, -0.3, -0.62),
+      adsPos: new THREE.Vector3(0.0, -0.14, -0.4),
+      mag: 6,
+      reserve: 48,
+    };
+  }
+
+  private buildSmg(): WeaponInstance {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.45), this.metal(0x26292f));
+    body.position.set(0, 0, -0.25);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.28), this.metal(0x17191d));
+    barrel.position.set(0, 0.02, -0.6);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.1), this.metal(0x1f2227));
+    mag.position.set(0, -0.2, -0.18);
+    mag.rotation.x = 0.1;
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.09), this.metal(0x1f2227));
+    grip.position.set(0, -0.14, 0.0);
+    grip.rotation.x = 0.25;
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.18), this.metal(0x26292f));
+    stock.position.set(0, -0.01, 0.12);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.05), this.metal(0x111316));
+    sight.position.set(0, 0.11, -0.3);
+    g.add(body, barrel, mag, grip, stock, sight);
+
+    const muzzle = this.makeMuzzle();
+    muzzle.position.set(0, 0.02, -0.78);
+    g.add(muzzle);
+
+    g.position.set(0.34, -0.3, -0.62);
+    g.rotation.y = 0.06;
+    this.camera.add(g);
+
+    return {
+      spec: {
+        kind: WeaponKind.Smg,
+        displayName: "SMG",
+        magSize: 30,
+        reserveMax: 270,
+        fireInterval: 0.065,
+        automatic: true,
+        damage: 14,
+        reloadTime: 1.4,
+        hipSpread: 0.05,
+        adsSpread: 0.018,
+        recoilKick: 0.01,
+        adsFov: 58,
+        scope: false,
+      },
+      model: g,
+      muzzle,
+      hipPos: new THREE.Vector3(0.34, -0.3, -0.62),
+      adsPos: new THREE.Vector3(0.0, -0.14, -0.4),
+      mag: 30,
+      reserve: 270,
+    };
+  }
+
   // マズルフラッシュ（発砲炎）の見た目
   private makeMuzzle(): THREE.Mesh {
     const m = new THREE.Mesh(
@@ -263,14 +370,37 @@ export class WeaponSystem {
     this.prevFiring = input.firing;
   }
 
+  // 武器の並び順。モバイルのトグルボタンが次の武器へ循環するのに使う。
+  private readonly order: WeaponKind[] = [
+    WeaponKind.Assault,
+    WeaponKind.Sniper,
+    WeaponKind.Shotgun,
+    WeaponKind.Smg,
+  ];
+
   private handleSwitch(input: InputState): void {
-    if (input.switchTo && input.switchTo !== this.current) {
-      this.weapons.get(this.current)!.model.visible = false;
-      this.current = input.switchTo;
-      this.weapons.get(this.current)!.model.visible = true;
-      this.reloading = false;
-      this.adsProgress = 0;
-    }
+    if (input.switchTo) this.switchToKind(input.switchTo);
+  }
+
+  // 指定した武器へ切り替える。数字キーとモバイルのトグルで共通して使う。
+  private switchToKind(kind: WeaponKind): void {
+    if (kind === this.current) return;
+    if (!this.weapons.has(kind)) return;
+    this.weapons.get(this.current)!.model.visible = false;
+    this.current = kind;
+    const w = this.weapons.get(this.current)!;
+    w.model.visible = true;
+    this.reloading = false;
+    this.adsProgress = 0;
+    this.hud.setWeaponName(w.spec.displayName);
+    this.hud.setAmmo(w.mag, w.reserve);
+  }
+
+  // 次の武器へ循環で切り替える（モバイルの武器ボタン用）
+  cycleWeapon(): void {
+    const i = this.order.indexOf(this.current);
+    const next = this.order[(i + 1) % this.order.length];
+    this.switchToKind(next);
   }
 
   private handleReload(input: InputState, now: number): void {
@@ -313,66 +443,36 @@ export class WeaponSystem {
     // モードへ「発砲した」ことを伝える（命中率の計算用）
     if (this.shotFiredHook) this.shotFiredHook();
 
-    // 弾の向き＝カメラ正面に拡散を加える
-    const dir = new THREE.Vector3();
-    this.camera.getWorldDirection(dir);
+    // 基準となる向き（カメラ正面）と起点（カメラ位置）
+    const baseDir = new THREE.Vector3();
+    this.camera.getWorldDirection(baseDir);
+    const origin = new THREE.Vector3();
+    this.camera.getWorldPosition(origin);
 
     const moveFactor = Math.min(1, playerSpeed / this.SPEED_REF);
     const baseSpread = input.aiming ? w.spec.adsSpread : w.spec.hipSpread;
     const spread = baseSpread * (1 + moveFactor * 1.5) + this.fireBloom * 0.02;
 
-    // 進行方向に対して垂直な2方向へランダムにずらす
+    // 向きを左右・上下へずらすための基準軸
     const up = new THREE.Vector3(0, 1, 0);
-    const tangent = new THREE.Vector3().crossVectors(dir, up).normalize();
-    const bitangent = new THREE.Vector3().crossVectors(dir, tangent).normalize();
-    const a = (Math.random() * 2 - 1) * spread;
-    const b = (Math.random() * 2 - 1) * spread;
-    dir.addScaledVector(tangent, a).addScaledVector(bitangent, b).normalize();
+    const tangent = new THREE.Vector3().crossVectors(baseDir, up).normalize();
+    const bitangent = new THREE.Vector3().crossVectors(baseDir, tangent).normalize();
 
-    // レイの起点はカメラ位置
-    const origin = new THREE.Vector3();
-    this.camera.getWorldPosition(origin);
-    this.raycaster.set(origin, dir);
     const objs =
       this.enemyTargets.length > 0
         ? this.shootables.concat(this.enemyTargets)
         : this.shootables;
-    const hits = this.raycaster.intersectObjects(objs, false);
-    if (hits.length > 0) {
-      const obj = hits[0].object;
-      // まず「動く敵」かどうかを見る。敵ならモードに処理を任せる。
-      if (this.enemyTargets.indexOf(obj) >= 0) {
-        const isHead = obj.userData && obj.userData.isHead === true;
-        this.hud.flashHitmarker();
-        if (isHead) this.hitmarker.headshot();
-        const dmg = isHead ? w.spec.damage * 2 : w.spec.damage;
-        if (this.enemyHitHook) this.enemyHitHook(obj, dmg);
-      } else {
-        const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
-        if (target) {
-          this.hud.flashHitmarker();
-          // モードのフックがあればそちらに任せる。処理されなければ通常動作。
-          let handled = false;
-          if (this.targetHitHook) {
-            handled = this.targetHitHook(target, performance.now() / 1000);
-          }
-          if (!handled) {
-            // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
-            if (w.spec.damage >= 50) {
-              this.stage.onTargetHit(target, performance.now() / 1000);
-            } else {
-              const mat = target.mesh.material as THREE.MeshStandardMaterial;
-              mat.emissive.set(0xff6644);
-              // 連続ヒットで倒す簡易処理
-              target.userHits = (target.userHits ?? 0) + w.spec.damage;
-              if (target.userHits >= 100) {
-                target.userHits = 0;
-                this.stage.onTargetHit(target, performance.now() / 1000);
-              }
-            }
-          }
-        }
-      }
+
+    // ショットガンは1回の射撃で複数の弾が散らばる。通常の銃は1発。
+    const pellets = w.spec.pellets ?? 1;
+    for (let p = 0; p < pellets; p++) {
+      const dir = baseDir.clone();
+      const a = (Math.random() * 2 - 1) * spread;
+      const b = (Math.random() * 2 - 1) * spread;
+      dir.addScaledVector(tangent, a).addScaledVector(bitangent, b).normalize();
+      this.raycaster.set(origin, dir);
+      const hits = this.raycaster.intersectObjects(objs, false);
+      if (hits.length > 0) this.handleHit(hits[0].object, w);
     }
 
     // 反動：視点を少し上へ。発砲拡散と見た目反動も加算。
@@ -385,6 +485,42 @@ export class WeaponSystem {
     w.muzzle.scale.setScalar(0.8 + Math.random() * 0.6);
     w.muzzle.rotation.z = Math.random() * Math.PI;
     this.muzzleTimer = 0.04;
+  }
+
+  // 1本のレイが当たった対象を処理する。敵ならモードへ、的なら的の処理へ。
+  private handleHit(obj: THREE.Object3D, w: WeaponInstance): void {
+    // まず「動く敵」かどうかを見る。敵ならモードに処理を任せる。
+    if (this.enemyTargets.indexOf(obj) >= 0) {
+      const isHead = obj.userData && obj.userData.isHead === true;
+      this.hud.flashHitmarker();
+      if (isHead) this.hitmarker.headshot();
+      const dmg = isHead ? w.spec.damage * 2 : w.spec.damage;
+      if (this.enemyHitHook) this.enemyHitHook(obj, dmg);
+      return;
+    }
+    const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
+    if (!target) return;
+    this.hud.flashHitmarker();
+    // モードのフックがあればそちらに任せる。処理されなければ通常動作。
+    let handled = false;
+    if (this.targetHitHook) {
+      handled = this.targetHitHook(target, performance.now() / 1000);
+    }
+    if (!handled) {
+      // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
+      if (w.spec.damage >= 50) {
+        this.stage.onTargetHit(target, performance.now() / 1000);
+      } else {
+        const mat = target.mesh.material as THREE.MeshStandardMaterial;
+        mat.emissive.set(0xff6644);
+        // 連続ヒットで倒す簡易処理
+        target.userHits = (target.userHits ?? 0) + w.spec.damage;
+        if (target.userHits >= 100) {
+          target.userHits = 0;
+          this.stage.onTargetHit(target, performance.now() / 1000);
+        }
+      }
+    }
   }
 
   private readonly SPEED_REF = 8.5; // 拡散計算の基準速度（ダッシュ速度）

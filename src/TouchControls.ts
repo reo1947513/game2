@@ -167,6 +167,13 @@ export class TouchControls {
 
   // 武器切替トグルの現在状態（ゲーム開始時はアサルト）
   private touchWeapon: WeaponKind = WeaponKind.Assault;
+  // 武器ボタンで循環させる順番（4丁）
+  private readonly weaponOrder: WeaponKind[] = [
+    WeaponKind.Assault,
+    WeaponKind.Sniper,
+    WeaponKind.Shotgun,
+    WeaponKind.Smg,
+  ];
 
   // スティック前傾スプリントの状態
   private sprintActive = false;
@@ -532,12 +539,13 @@ export class TouchControls {
 
   // 武器切替（1ボタンのトグル）。タップでアサルト⇔スナイパーを交互に切り替える。
   private toggleWeapon(): void {
-    this.touchWeapon =
-      this.touchWeapon === WeaponKind.Assault ? WeaponKind.Sniper : WeaponKind.Assault;
+    // 次の武器へ循環で切り替える（アサルト→スナイパー→ショットガン→SMG→…）
+    const i = this.weaponOrder.indexOf(this.touchWeapon);
+    this.touchWeapon = this.weaponOrder[(i + 1) % this.weaponOrder.length];
     this.input.queueSwitch(this.touchWeapon);
     const btn = this.btnMap["weapon"];
     if (btn) {
-      btn.textContent = this.touchWeapon === WeaponKind.Assault ? "ASSAULT" : "SNIPER";
+      btn.textContent = this.touchWeapon;
     }
   }
 

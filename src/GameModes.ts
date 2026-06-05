@@ -365,14 +365,26 @@ export class Parkour implements GameMode {
 }
 
 // ===== モード4：ウェーブ・サバイバル =====
-// ウェーブに出る敵の種類。大きさ・色・速さ・体力を変えて差別化する。
+// ウェーブに出る敵の種類。大きさ・色・速さ・体力・行動を変えて差別化する。
+type EnemyBehavior = "melee" | "ranged" | "bomber";
 interface WaveEnemyType {
   scale: number;
   bodyColor: number;
   accentColor: number;
   speedMul: number;
   hp: number;
+  behavior: EnemyBehavior;
+  shielded: boolean;
 }
+// 生成後の敵1体ぶんのデータ
+type WaveEnemy = {
+  unit: EnemyUnit;
+  hp: number;
+  speed: number;
+  behavior: EnemyBehavior;
+  shielded: boolean;
+  nextShot: number; // 遠距離型が次に撃てる時刻
+};
 // 標準：バランス型（オレンジ）
 const WAVE_STANDARD: WaveEnemyType = {
   scale: 1,
@@ -380,6 +392,8 @@ const WAVE_STANDARD: WaveEnemyType = {
   accentColor: 0xff6a00,
   speedMul: 1,
   hp: 40,
+  behavior: "melee",
+  shielded: false,
 };
 // 突撃：小さく速く脆い（赤ピンク）
 const WAVE_RUSHER: WaveEnemyType = {
@@ -388,6 +402,8 @@ const WAVE_RUSHER: WaveEnemyType = {
   accentColor: 0xff2a6a,
   speedMul: 1.7,
   hp: 20,
+  behavior: "melee",
+  shielded: false,
 };
 // 重装：大きく遅く硬い（青）
 const WAVE_TANK: WaveEnemyType = {
@@ -396,6 +412,38 @@ const WAVE_TANK: WaveEnemyType = {
   accentColor: 0x36c0ff,
   speedMul: 0.55,
   hp: 120,
+  behavior: "melee",
+  shielded: false,
+};
+// 遠距離：近づかず中距離から撃つ（紫）
+const WAVE_SHOOTER: WaveEnemyType = {
+  scale: 1,
+  bodyColor: 0x2a1d3a,
+  accentColor: 0xb070ff,
+  speedMul: 0.9,
+  hp: 40,
+  behavior: "ranged",
+  shielded: false,
+};
+// 自爆：接近して自爆し、大ダメージを与えて消える（黄）
+const WAVE_BOMBER: WaveEnemyType = {
+  scale: 0.95,
+  bodyColor: 0x2e2a12,
+  accentColor: 0xffd23a,
+  speedMul: 1.5,
+  hp: 20,
+  behavior: "bomber",
+  shielded: false,
+};
+// 盾：正面の胴が硬く、頭が弱点（黄緑）
+const WAVE_SHIELD: WaveEnemyType = {
+  scale: 1.1,
+  bodyColor: 0x20242a,
+  accentColor: 0xc9d24a,
+  speedMul: 0.7,
+  hp: 50,
+  behavior: "melee",
+  shielded: true,
 };
 
 // 四方から迫る敵を撃って倒し、波をしのいで生き延びる。
@@ -406,7 +454,7 @@ export class WaveSurvival implements GameMode {
   description = "四方から迫る敵を撃ち、波をしのいで生き延びる。被弾で体力が減る。";
 
   private ctx: GameContext | null = null;
-  private enemies: { unit: EnemyUnit; hp: number; speed: number }[] = [];
+  private enemies: WaveEnemy[] = [];
   private wave = 0;
   private kills = 0;
   private alive = false;
@@ -460,16 +508,27 @@ export class WaveSurvival implements GameMode {
       this.ctx.scene.add(unit.group);
       this.ctx.weapons.enemyTargets.push(unit.hitbox);
       this.ctx.weapons.enemyTargets.push(unit.headHitbox);
-      this.enemies.push({ unit, hp: type.hp, speed: speed * type.speedMul });
+      this.enemies.push({
+        unit,
+        hp: type.hp,
+        speed: speed * type.speedMul,
+        behavior: type.behavior,
+        shielded: type.shielded,
+        nextShot: performance.now() / 1000 + 1 + Math.random() * 1.5,
+      });
     }
     this.updateHud();
   }
 
-  // 波に応じて敵の種類を選ぶ。波が進むほど重装が混じる。
+  // 波に応じて敵の種類を選ぶ。波が進むほど多彩になる。
   private pickType(): WaveEnemyType {
+    const w = this.wave;
     const r = Math.random();
-    if (this.wave >= 3 && r < 0.25) return WAVE_TANK;
-    if (r < 0.5) return WAVE_RUSHER;
+    if (w >= 5 && r < 0.15) return WAVE_BOMBER;
+    if (w >= 4 && r < 0.3) return WAVE_SHOOTER;
+    if (w >= 4 && r < 0.4) return WAVE_SHIELD;
+    if (w >= 3 && r < 0.55) return WAVE_TANK;
+    if (r < 0.75) return WAVE_RUSHER;
     return WAVE_STANDARD;
   }
 
@@ -479,15 +538,15 @@ export class WaveSurvival implements GameMode {
       (x) => x.unit.hitbox === obj || x.unit.headHitbox === obj
     );
     if (!e) return;
-    e.hp -= damage;
+    let dmg = damage;
+    // 盾型は正面の胴が硬い。胴へのダメージは大きく減り、頭が弱点になる。
+    if (e.shielded && obj === e.unit.hitbox) dmg *= 0.25;
+    e.hp -= dmg;
     if (e.hp <= 0) this.removeEnemy(e, true);
   }
 
   // 敵を1体取り除く。killed=true なら撃破数を増やす。
-  private removeEnemy(
-    e: { unit: EnemyUnit; hp: number; speed: number },
-    killed: boolean
-  ): void {
+  private removeEnemy(e: WaveEnemy, killed: boolean): void {
     if (!this.ctx) return;
     this.ctx.scene.remove(e.unit.group);
     e.unit.dispose();
@@ -508,33 +567,65 @@ export class WaveSurvival implements GameMode {
     ctx.player.getEyePosition(this.eye);
 
     let contacting = false;
-    for (const e of this.enemies) {
-      const ex = e.unit.group.position.x;
-      const ez = e.unit.group.position.z;
-      const dx = this.eye.x - ex;
-      const dz = this.eye.z - ez;
+    let playerDamaged = false;
+
+    // 撤去が起きても安全なよう、後ろから回す
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = this.eye.x - e.unit.group.position.x;
+      const dz = this.eye.z - e.unit.group.position.z;
       const d = Math.hypot(dx, dz);
       e.unit.faceTo(dx, dz);
 
-      if (d > 1.3) {
-        // 間合いの外：壁やブロックを避けて歩いて近づく
-        e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
-        e.unit.update(dt, "walk");
+      if (e.behavior === "ranged") {
+        // 遠距離：中距離まで来たら止まって撃つ
+        if (d > 9) {
+          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+          e.unit.update(dt, "walk");
+        } else {
+          e.unit.update(dt, "attack");
+          if (now >= e.nextShot) {
+            e.nextShot = now + 1.5 + Math.random() * 0.8;
+            const hitChance = Math.max(0.15, Math.min(0.5, 0.55 - d * 0.03));
+            if (Math.random() < hitChance) {
+              ctx.health.damage(8);
+              playerDamaged = true;
+            }
+          }
+        }
+      } else if (e.behavior === "bomber") {
+        // 自爆：接近して自爆し、大ダメージを与えて消える（撃破ではない）
+        if (d > 1.2) {
+          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+          e.unit.update(dt, "walk");
+        } else {
+          ctx.health.damage(35);
+          playerDamaged = true;
+          this.removeEnemy(e, false);
+        }
       } else {
-        // 間合いの内：止まって攻撃モーション
-        e.unit.update(dt, "attack");
-        contacting = true;
+        // 近接：間合いまで近づいて殴る（標準・突撃・重装・盾）
+        if (d > 1.3) {
+          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+          e.unit.update(dt, "walk");
+        } else {
+          e.unit.update(dt, "attack");
+          contacting = true;
+        }
       }
     }
 
-    // 接触している敵がいれば、一定間隔で体力を減らす
+    // 近接で接触している敵がいれば、一定間隔で体力を減らす
     if (contacting && now >= this.nextContactTime) {
       ctx.health.damage(12);
       this.nextContactTime = now + 0.8;
-      if (ctx.health.isDead()) {
-        this.gameOver(ctx);
-        return;
-      }
+      playerDamaged = true;
+    }
+
+    // どの攻撃でも、被弾の結果として体力が尽きたら終了
+    if (playerDamaged && ctx.health.isDead()) {
+      this.gameOver(ctx);
+      return;
     }
 
     // 敵を全部倒したら次の波へ

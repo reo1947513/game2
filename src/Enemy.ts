@@ -8,6 +8,7 @@ export interface EnemyOptions {
   scale?: number;
   bodyColor?: number;
   accentColor?: number;
+  flying?: boolean;
 }
 
 // コードだけで組んだ人型の敵です。歩行と攻撃のモーションを持ち、
@@ -37,10 +38,12 @@ export class EnemyUnit {
   private readonly radius = 0.4;
   private readonly bodyHeight = 2.0;
   private scaleFactor = 1;
+  private flying = false;
 
   constructor(opts: EnemyOptions = {}) {
     this.group = new THREE.Group();
     this.scaleFactor = opts.scale ?? 1;
+    this.flying = opts.flying ?? false;
     const bodyColor = opts.bodyColor ?? 0x23262e;
     const accentColor = opts.accentColor ?? 0xff6a00;
 
@@ -136,18 +139,31 @@ export class EnemyUnit {
     this.group.position.set(x, 0, z);
   }
 
-  // 目標へ向かって、壁やブロックを避けながら水平移動する。
-  // 横と奥行きを別々に動かし、ぶつかった方向だけ取り消すので、壁沿いに滑れる。
+  // 目標へ向かって水平移動する。地上の敵は壁やブロックを避け、
+  // 飛行する敵は障害物を無視して、高度を目標へ寄せる。
   moveToward(
     tx: number,
     tz: number,
     speed: number,
     dt: number,
-    colliders: THREE.Box3[]
+    colliders: THREE.Box3[],
+    targetY?: number
   ): void {
     const dx = tx - this.group.position.x;
     const dz = tz - this.group.position.z;
     const d = Math.hypot(dx, dz);
+
+    if (this.flying) {
+      // 飛行：障害物を無視して水平移動し、高度を目標へふわふわ寄せる
+      if (d > 0.001) {
+        this.group.position.x += (dx / d) * speed * dt;
+        this.group.position.z += (dz / d) * speed * dt;
+      }
+      const ty = (targetY ?? 3) + Math.sin(performance.now() / 500) * 0.4;
+      this.group.position.y += (ty - this.group.position.y) * Math.min(1, dt * 2);
+      return;
+    }
+
     if (d < 0.001) return;
     const stepX = (dx / d) * speed * dt;
     const stepZ = (dz / d) * speed * dt;

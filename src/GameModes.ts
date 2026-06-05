@@ -366,7 +366,7 @@ export class Parkour implements GameMode {
 
 // ===== モード4：ウェーブ・サバイバル =====
 // ウェーブに出る敵の種類。大きさ・色・速さ・体力・行動を変えて差別化する。
-type EnemyBehavior = "melee" | "ranged" | "bomber";
+type EnemyBehavior = "melee" | "ranged" | "bomber" | "boss";
 interface WaveEnemyType {
   scale: number;
   bodyColor: number;
@@ -375,6 +375,7 @@ interface WaveEnemyType {
   hp: number;
   behavior: EnemyBehavior;
   shielded: boolean;
+  flying?: boolean;
 }
 // 生成後の敵1体ぶんのデータ
 type WaveEnemy = {
@@ -384,6 +385,7 @@ type WaveEnemy = {
   behavior: EnemyBehavior;
   shielded: boolean;
   nextShot: number; // 遠距離型が次に撃てる時刻
+  flying: boolean;
 };
 // 標準：バランス型（オレンジ）
 const WAVE_STANDARD: WaveEnemyType = {
@@ -445,6 +447,27 @@ const WAVE_SHIELD: WaveEnemyType = {
   behavior: "melee",
   shielded: true,
 };
+// ドローン：空を飛び、障害物を無視して中距離から撃つ（シアン）
+const WAVE_DRONE: WaveEnemyType = {
+  scale: 0.8,
+  bodyColor: 0x12303a,
+  accentColor: 0x3affe0,
+  speedMul: 1.1,
+  hp: 30,
+  behavior: "ranged",
+  shielded: false,
+  flying: true,
+};
+// ボス：大型で体力が高く、距離で撃ちと殴りを使い分ける（赤金）
+const WAVE_BOSS: WaveEnemyType = {
+  scale: 2.5,
+  bodyColor: 0x2a0d0d,
+  accentColor: 0xffcf3a,
+  speedMul: 0.5,
+  hp: 600,
+  behavior: "boss",
+  shielded: false,
+};
 
 // 四方から迫る敵を撃って倒し、波をしのいで生き延びる。
 // 敵に触れられると体力が減り、0になると終了。波が進むほど数と速さが増す。
@@ -487,48 +510,60 @@ export class WaveSurvival implements GameMode {
     const count = 2 + this.wave;
     const speed = 1.6 + this.wave * 0.25;
 
-    this.ctx.player.getEyePosition(this.eye);
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 18 + Math.random() * 4;
-      const x = this.eye.x + Math.cos(angle) * dist;
-      const z = this.eye.z + Math.sin(angle) * dist;
-
-      const type = this.pickType();
-      const unit = new EnemyUnit({
-        scale: type.scale,
-        bodyColor: type.bodyColor,
-        accentColor: type.accentColor,
-      });
-      // ステージの外へ出ないよう、おおまかに範囲内へ収める
-      unit.setGround(
-        Math.max(-28, Math.min(28, x)),
-        Math.max(-28, Math.min(28, z))
-      );
-      this.ctx.scene.add(unit.group);
-      this.ctx.weapons.enemyTargets.push(unit.hitbox);
-      this.ctx.weapons.enemyTargets.push(unit.headHitbox);
-      this.enemies.push({
-        unit,
-        hp: type.hp,
-        speed: speed * type.speedMul,
-        behavior: type.behavior,
-        shielded: type.shielded,
-        nextShot: performance.now() / 1000 + 1 + Math.random() * 1.5,
-      });
+      this.spawnOne(this.pickType(), speed);
+    }
+    // 5波ごとにボスを1体追加する
+    if (this.wave % 5 === 0) {
+      this.spawnOne(WAVE_BOSS, speed);
     }
     this.updateHud();
+  }
+
+  // 指定した種類の敵を1体出す
+  private spawnOne(type: WaveEnemyType, baseSpeed: number): void {
+    if (!this.ctx) return;
+    this.ctx.player.getEyePosition(this.eye);
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 18 + Math.random() * 4;
+    const x = this.eye.x + Math.cos(angle) * dist;
+    const z = this.eye.z + Math.sin(angle) * dist;
+
+    const unit = new EnemyUnit({
+      scale: type.scale,
+      bodyColor: type.bodyColor,
+      accentColor: type.accentColor,
+      flying: type.flying ?? false,
+    });
+    // ステージの外へ出ないよう、おおまかに範囲内へ収める
+    unit.setGround(
+      Math.max(-28, Math.min(28, x)),
+      Math.max(-28, Math.min(28, z))
+    );
+    this.ctx.scene.add(unit.group);
+    this.ctx.weapons.enemyTargets.push(unit.hitbox);
+    this.ctx.weapons.enemyTargets.push(unit.headHitbox);
+    this.enemies.push({
+      unit,
+      hp: type.hp,
+      speed: baseSpeed * type.speedMul,
+      behavior: type.behavior,
+      shielded: type.shielded,
+      nextShot: performance.now() / 1000 + 1 + Math.random() * 1.5,
+      flying: type.flying ?? false,
+    });
   }
 
   // 波に応じて敵の種類を選ぶ。波が進むほど多彩になる。
   private pickType(): WaveEnemyType {
     const w = this.wave;
     const r = Math.random();
-    if (w >= 5 && r < 0.15) return WAVE_BOMBER;
-    if (w >= 4 && r < 0.3) return WAVE_SHOOTER;
-    if (w >= 4 && r < 0.4) return WAVE_SHIELD;
-    if (w >= 3 && r < 0.55) return WAVE_TANK;
-    if (r < 0.75) return WAVE_RUSHER;
+    if (w >= 6 && r < 0.12) return WAVE_DRONE;
+    if (w >= 5 && r < 0.24) return WAVE_BOMBER;
+    if (w >= 4 && r < 0.38) return WAVE_SHOOTER;
+    if (w >= 4 && r < 0.48) return WAVE_SHIELD;
+    if (w >= 3 && r < 0.6) return WAVE_TANK;
+    if (r < 0.78) return WAVE_RUSHER;
     return WAVE_STANDARD;
   }
 
@@ -580,7 +615,8 @@ export class WaveSurvival implements GameMode {
       if (e.behavior === "ranged") {
         // 遠距離：中距離まで来たら止まって撃つ
         if (d > 9) {
-          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+          const ty = e.flying ? this.eye.y + 2 : undefined;
+          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders, ty);
           e.unit.update(dt, "walk");
         } else {
           e.unit.update(dt, "attack");
@@ -602,6 +638,24 @@ export class WaveSurvival implements GameMode {
           ctx.health.damage(35);
           playerDamaged = true;
           this.removeEnemy(e, false);
+        }
+      } else if (e.behavior === "boss") {
+        // ボス：遠ければ近づき、中距離で連射、近接で殴る
+        if (d > 12) {
+          e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+          e.unit.update(dt, "walk");
+        } else if (d > 5) {
+          e.unit.update(dt, "attack");
+          if (now >= e.nextShot) {
+            e.nextShot = now + 0.6;
+            if (Math.random() < 0.5) {
+              ctx.health.damage(7);
+              playerDamaged = true;
+            }
+          }
+        } else {
+          e.unit.update(dt, "attack");
+          contacting = true;
         }
       } else {
         // 近接：間合いまで近づいて殴る（標準・突撃・重装・盾）

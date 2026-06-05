@@ -383,6 +383,10 @@ export class WeaponSystem {
     w.model.rotation.z = r * 0.35;
     // input.aiming自体は使わないが、将来の傾き調整用に参照しておく
     void input.aiming;
+
+    // 覗き込み時、スナイパーは銃モデルがカメラ至近で視界を塞ぐため隠す（実質スコープ視点）。
+    // アサルトなど scope=false の武器は通常どおり表示する。
+    w.model.visible = !(w.spec.scope && this.adsProgress > 0.5);
   }
 
   // 視野角の更新（ADSで拡大）

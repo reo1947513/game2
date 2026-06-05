@@ -1,10 +1,10 @@
 import * as THREE from "three";
 
-// 敵が落とすアイテムの種類。弾薬は予備弾を、回復は体力を補う。
-export type PickupKind = "ammo" | "health";
+// 敵が落とすアイテムの種類。弾薬は予備弾を、回復は体力を、手榴弾は投擲数を補う。
+export type PickupKind = "ammo" | "health" | "grenade";
 
 // 地面に落ちて回転・浮遊し、プレイヤーが近づくと拾えるアイテム。
-// 見た目は小さな箱で、弾薬は金色、回復は緑色。回復には白い十字の目印を付ける。
+// 見た目は小さな箱で、弾薬は金色、回復は明るい緑＋白い十字、手榴弾は濃い緑＋黒い球の目印。
 export class Pickup {
   group: THREE.Group;
   kind: PickupKind;
@@ -18,7 +18,8 @@ export class Pickup {
     this.kind = kind;
     this.group = new THREE.Group();
 
-    const color = kind === "ammo" ? 0xffcf3a : 0x44dd66;
+    const color =
+      kind === "ammo" ? 0xffcf3a : kind === "health" ? 0x44dd66 : 0x4a6a22;
 
     // 本体の箱
     const boxG = new THREE.BoxGeometry(0.42, 0.42, 0.42);
@@ -50,7 +51,7 @@ export class Pickup {
       v.position.z = 0.22;
       h.position.z = 0.22;
       this.group.add(v, h);
-    } else {
+    } else if (kind === "ammo") {
       // 弾薬は上面に細い帯を重ねて、弾倉のような印象にする
       const stripeM = new THREE.MeshStandardMaterial({
         color: 0x4a3a10,
@@ -63,6 +64,20 @@ export class Pickup {
       const stripe = new THREE.Mesh(stripeG, stripeM);
       stripe.position.y = 0.08;
       this.group.add(stripe);
+    } else {
+      // 手榴弾は上に黒い球を乗せて、手榴弾だと分かるようにする
+      const ballM = new THREE.MeshStandardMaterial({
+        color: 0x1a2410,
+        emissive: 0x0c1206,
+        emissiveIntensity: 0.3,
+        roughness: 0.5,
+      });
+      this.mats.push(ballM);
+      const ballG = new THREE.SphereGeometry(0.16, 10, 8);
+      this.geos.push(ballG);
+      const ball = new THREE.Mesh(ballG, ballM);
+      ball.position.y = 0.28;
+      this.group.add(ball);
     }
 
     this.group.position.set(x, this.baseY, z);

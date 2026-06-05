@@ -16,6 +16,8 @@ export class GrenadeSystem {
 
   private enabled = false;
   private ammo = 0;
+  private readonly MAX_AMMO = 5; // 所持できる手榴弾の上限
+  private hudEl: HTMLElement; // 所持数の画面表示
 
   private readonly THROW_SPEED = 20; // 投擲の初速
   private readonly THROW_UP = 4.5; // 上向きに加える初速
@@ -46,17 +48,34 @@ export class GrenadeSystem {
       this.scene.add(dot);
       this.previewDots.push(dot);
     }
+
+    // 所持数の画面表示（手榴弾が使えるモードのときだけ出す）
+    this.hudEl = document.createElement("div");
+    this.hudEl.id = "grenade-count";
+    this.hudEl.style.cssText =
+      "position:fixed; left:24px; bottom:96px; color:#ffd23a; font-weight:bold;" +
+      " font-size:20px; text-shadow:0 1px 3px rgba(0,0,0,0.8);" +
+      " font-family:system-ui,sans-serif; pointer-events:none; z-index:50; display:none;";
+    this.hudEl.textContent = "手榴弾 0";
+    document.body.appendChild(this.hudEl);
   }
 
   // 手榴弾を使えるモードかどうかを切り替える
   setEnabled(b: boolean): void {
     this.enabled = b;
+    this.hudEl.style.display = b ? "block" : "none";
     if (!b) this.hidePreview();
   }
 
   setAmmo(n: number): void {
-    this.ammo = n;
+    this.ammo = Math.max(0, Math.min(this.MAX_AMMO, n));
+    this.hudEl.textContent = `手榴弾 ${this.ammo}`;
     if (this.onAmmoChange) this.onAmmoChange(this.ammo);
+  }
+
+  // アイテムで補充する。上限を超えない範囲で増やす。
+  addAmmo(n: number): void {
+    this.setAmmo(this.ammo + n);
   }
 
   getAmmo(): number {

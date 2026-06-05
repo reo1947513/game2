@@ -636,10 +636,12 @@ export class WaveSurvival implements GameMode {
       this.spawnPickup("health", p.x + 1, p.z);
       this.spawnPickup("ammo", p.x, p.z - 1);
       this.spawnPickup("ammo", p.x, p.z + 1);
+      this.spawnPickup("grenade", p.x, p.z);
       return;
     }
     if (Math.random() < 0.25) this.spawnPickup("ammo", p.x, p.z);
     if (Math.random() < 0.18) this.spawnPickup("health", p.x, p.z);
+    if (Math.random() < 0.1) this.spawnPickup("grenade", p.x, p.z);
   }
 
   // アイテムを1個、範囲内に収めて出す
@@ -804,8 +806,10 @@ export class WaveSurvival implements GameMode {
       if (Math.hypot(pdx, pdz) < 1.6) {
         if (pk.kind === "ammo") {
           ctx.weapons.addAmmo(60);
-        } else {
+        } else if (pk.kind === "health") {
           ctx.health.heal(30);
+        } else {
+          if (ctx.grenadeSystem) ctx.grenadeSystem.addAmmo(1);
         }
         pk.dispose(ctx.scene);
         this.pickups.splice(i, 1);

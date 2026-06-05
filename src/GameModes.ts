@@ -746,10 +746,17 @@ export class BotDeathmatch implements GameMode {
   private playerRespawnAt = 0;
   private eye = new THREE.Vector3();
 
+  // 壁越し射撃を防ぐ視線判定の作業用
+  private losFrom = new THREE.Vector3();
+  private losDir = new THREE.Vector3();
+  private losRay = new THREE.Ray();
+  private losHit = new THREE.Vector3();
+
   private readonly BOT_COUNT = 3;
   private readonly DURATION = 120; // 制限時間（秒）
   private readonly BOT_HP = 60;
   private readonly BOT_SPEED = 2.2;
+  private readonly BOT_RANGE = 5; // この距離以下になったら射撃する
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
@@ -848,8 +855,8 @@ export class BotDeathmatch implements GameMode {
       const d = Math.hypot(dx, dz);
       b.unit.faceTo(dx, dz);
 
-      if (d > 8) {
-        // 遠い：壁やブロックを避けて歩いて近づく
+      if (d > this.BOT_RANGE) {
+        // 射程外：壁やブロックを避けて歩いて近づく
         b.unit.moveToward(this.eye.x, this.eye.z, this.BOT_SPEED, dt, ctx.stage.colliders);
         b.unit.update(dt, "walk");
       } else {
@@ -857,14 +864,19 @@ export class BotDeathmatch implements GameMode {
         b.unit.update(dt, "attack");
         if (!this.playerDead && now >= b.nextShot) {
           b.nextShot = now + 1.2 + Math.random() * 0.8;
-          // 近いほど当たりやすい
-          const hitChance = Math.max(0.12, Math.min(0.5, 0.55 - d * 0.03));
-          if (Math.random() < hitChance) {
-            ctx.health.damage(10);
-            if (ctx.health.isDead() && !this.playerDead) {
-              this.deaths++;
-              this.playerDead = true;
-              this.playerRespawnAt = now + 3;
+          // ボットの胸あたりからプレイヤー目線へ視線が通るときだけ撃つ（壁・箱の陰では撃たない）
+          this.losFrom.copy(b.unit.group.position);
+          this.losFrom.y += 1.3;
+          if (this.hasLineOfSight(this.losFrom, this.eye, ctx.stage.colliders)) {
+            // 近いほど当たりやすく、射程ぎりぎりはほとんど当たらない
+            const hitChance = Math.max(0, Math.min(0.45, 0.5 - d * 0.07));
+            if (Math.random() < hitChance) {
+              ctx.health.damage(10);
+              if (ctx.health.isDead() && !this.playerDead) {
+                this.deaths++;
+                this.playerDead = true;
+                this.playerRespawnAt = now + 3;
+              }
             }
           }
         }
@@ -894,6 +906,26 @@ export class BotDeathmatch implements GameMode {
       lines.push(`復活まで ${Math.max(0, Math.ceil(this.playerRespawnAt - now))} 秒`);
     }
     this.ctx.ui.setHud(lines);
+  }
+
+  // from から to へ、ステージの障害物に遮られず視線が通るか（壁越し射撃の抑止）
+  private hasLineOfSight(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    colliders: THREE.Box3[]
+  ): boolean {
+    this.losDir.subVectors(to, from);
+    const dist = this.losDir.length();
+    if (dist < 0.001) return true;
+    this.losDir.normalize();
+    this.losRay.set(from, this.losDir);
+    for (const c of colliders) {
+      const hit = this.losRay.intersectBox(c, this.losHit);
+      if (hit && this.losHit.distanceTo(from) < dist - 0.1) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private finishMatch(ctx: GameContext): void {

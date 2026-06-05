@@ -911,12 +911,14 @@ export class BotDeathmatch implements GameMode {
   private losDir = new THREE.Vector3();
   private losRay = new THREE.Ray();
   private losHit = new THREE.Vector3();
+  private nextGrenadeRefill = 0; // 次に手榴弾を補充する時刻（秒）
 
   private readonly BOT_COUNT = 3;
   private readonly DURATION = 120; // 制限時間（秒）
   private readonly BOT_HP = 100;
   private readonly BOT_SPEED = 2.2;
   private readonly BOT_RANGE = 1; // この距離以下になったら射撃する
+  private readonly GRENADE_REFILL_INTERVAL = 20; // 手榴弾の自動補充の間隔（秒）
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
@@ -945,6 +947,8 @@ export class BotDeathmatch implements GameMode {
       ctx.grenadeSystem.onExplode = (x, _y, z, r) =>
         this.onGrenadeExplode(x, z, r);
     }
+    // 一定時間ごとの手榴弾補充を予約する
+    this.nextGrenadeRefill = now + this.GRENADE_REFILL_INTERVAL;
 
     for (let i = 0; i < this.BOT_COUNT; i++) this.spawnBot(now);
     this.updateHud(now);
@@ -1014,6 +1018,12 @@ export class BotDeathmatch implements GameMode {
       ctx.player.respawn(0, 0, 8);
       ctx.health.reset(100);
       this.playerDead = false;
+    }
+
+    // 手榴弾の自動補充（一定時間ごとに1個。上限はGrenadeSystem側で頭打ち）
+    if (now >= this.nextGrenadeRefill) {
+      if (ctx.grenadeSystem) ctx.grenadeSystem.addAmmo(1);
+      this.nextGrenadeRefill = now + this.GRENADE_REFILL_INTERVAL;
     }
 
     ctx.player.getEyePosition(this.eye);

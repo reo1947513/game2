@@ -365,6 +365,39 @@ export class Parkour implements GameMode {
 }
 
 // ===== モード4：ウェーブ・サバイバル =====
+// ウェーブに出る敵の種類。大きさ・色・速さ・体力を変えて差別化する。
+interface WaveEnemyType {
+  scale: number;
+  bodyColor: number;
+  accentColor: number;
+  speedMul: number;
+  hp: number;
+}
+// 標準：バランス型（オレンジ）
+const WAVE_STANDARD: WaveEnemyType = {
+  scale: 1,
+  bodyColor: 0x23262e,
+  accentColor: 0xff6a00,
+  speedMul: 1,
+  hp: 40,
+};
+// 突撃：小さく速く脆い（赤ピンク）
+const WAVE_RUSHER: WaveEnemyType = {
+  scale: 0.8,
+  bodyColor: 0x3a1530,
+  accentColor: 0xff2a6a,
+  speedMul: 1.7,
+  hp: 20,
+};
+// 重装：大きく遅く硬い（青）
+const WAVE_TANK: WaveEnemyType = {
+  scale: 1.35,
+  bodyColor: 0x1a1d22,
+  accentColor: 0x36c0ff,
+  speedMul: 0.55,
+  hp: 120,
+};
+
 // 四方から迫る敵を撃って倒し、波をしのいで生き延びる。
 // 敵に触れられると体力が減り、0になると終了。波が進むほど数と速さが増す。
 export class WaveSurvival implements GameMode {
@@ -392,8 +425,9 @@ export class WaveSurvival implements GameMode {
     ctx.health.show();
     ctx.ui.showHud(true);
 
-    // 射撃が敵に当たったときの処理を登録する
-    ctx.weapons.enemyHitHook = (obj: THREE.Object3D) => this.onEnemyShot(obj);
+    // 射撃が敵に当たったときの処理を登録する（武器の威力を受け取る）
+    ctx.weapons.enemyHitHook = (obj: THREE.Object3D, damage: number) =>
+      this.onEnemyShot(obj, damage);
 
     this.startWave();
   }
@@ -412,7 +446,12 @@ export class WaveSurvival implements GameMode {
       const x = this.eye.x + Math.cos(angle) * dist;
       const z = this.eye.z + Math.sin(angle) * dist;
 
-      const unit = new EnemyUnit();
+      const type = this.pickType();
+      const unit = new EnemyUnit({
+        scale: type.scale,
+        bodyColor: type.bodyColor,
+        accentColor: type.accentColor,
+      });
       // ステージの外へ出ないよう、おおまかに範囲内へ収める
       unit.setGround(
         Math.max(-28, Math.min(28, x)),
@@ -421,18 +460,26 @@ export class WaveSurvival implements GameMode {
       this.ctx.scene.add(unit.group);
       this.ctx.weapons.enemyTargets.push(unit.hitbox);
       this.ctx.weapons.enemyTargets.push(unit.headHitbox);
-      this.enemies.push({ unit, hp: 1, speed });
+      this.enemies.push({ unit, hp: type.hp, speed: speed * type.speedMul });
     }
     this.updateHud();
   }
 
+  // 波に応じて敵の種類を選ぶ。波が進むほど重装が混じる。
+  private pickType(): WaveEnemyType {
+    const r = Math.random();
+    if (this.wave >= 3 && r < 0.25) return WAVE_TANK;
+    if (r < 0.5) return WAVE_RUSHER;
+    return WAVE_STANDARD;
+  }
+
   // 弾が敵に当たったとき
-  private onEnemyShot(obj: THREE.Object3D): void {
+  private onEnemyShot(obj: THREE.Object3D, damage: number): void {
     const e = this.enemies.find(
       (x) => x.unit.hitbox === obj || x.unit.headHitbox === obj
     );
     if (!e) return;
-    e.hp--;
+    e.hp -= damage;
     if (e.hp <= 0) this.removeEnemy(e, true);
   }
 

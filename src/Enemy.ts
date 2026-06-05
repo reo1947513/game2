@@ -3,6 +3,13 @@ import * as THREE from "three";
 // 敵の動作状態。歩く・攻撃する・止まる。
 export type EnemyMode = "walk" | "attack" | "idle";
 
+// 敵の見た目の設定（種類ごとに変える）
+export interface EnemyOptions {
+  scale?: number;
+  bodyColor?: number;
+  accentColor?: number;
+}
+
 // コードだけで組んだ人型の敵です。歩行と攻撃のモーションを持ち、
 // 射撃を受けるための見えない当たり判定（hitbox）を内部に1枚だけ持ちます。
 // ウェーブ・サバイバルとボット・デスマッチで共通して使います。
@@ -29,19 +36,23 @@ export class EnemyUnit {
   // 衝突判定用のおおよその寸法（半径と高さ）
   private readonly radius = 0.4;
   private readonly bodyHeight = 2.0;
+  private scaleFactor = 1;
 
-  constructor() {
+  constructor(opts: EnemyOptions = {}) {
     this.group = new THREE.Group();
+    this.scaleFactor = opts.scale ?? 1;
+    const bodyColor = opts.bodyColor ?? 0x23262e;
+    const accentColor = opts.accentColor ?? 0xff6a00;
 
-    // 黒に近い本体と、オレンジに光る差し色
+    // 本体色と差し色（種類ごとに変わる）
     this.bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x23262e,
+      color: bodyColor,
       roughness: 0.55,
       metalness: 0.35,
     });
     this.eyeMat = new THREE.MeshStandardMaterial({
-      color: 0xff6a00,
-      emissive: 0xff5500,
+      color: accentColor,
+      emissive: accentColor,
       emissiveIntensity: 1.4,
     });
 
@@ -101,6 +112,9 @@ export class EnemyUnit {
     this.headHitbox.position.y = 1.9;
     this.headHitbox.userData.isHead = true;
     this.group.add(this.headHitbox);
+
+    // 種類ごとの大きさを反映する（当たり判定も hitsCollider 側で連動）
+    this.group.scale.setScalar(this.scaleFactor);
   }
 
   // 肩・股関節を支点にした手足を作る。支点で回すと前後に振れる。
@@ -149,12 +163,14 @@ export class EnemyUnit {
 
   // 今の位置で、いずれかのブロックと重なっているか
   private hitsCollider(colliders: THREE.Box3[]): boolean {
-    const minX = this.group.position.x - this.radius;
-    const maxX = this.group.position.x + this.radius;
-    const minZ = this.group.position.z - this.radius;
-    const maxZ = this.group.position.z + this.radius;
+    const r = this.radius * this.scaleFactor;
+    const h = this.bodyHeight * this.scaleFactor;
+    const minX = this.group.position.x - r;
+    const maxX = this.group.position.x + r;
+    const minZ = this.group.position.z - r;
+    const maxZ = this.group.position.z + r;
     const minY = this.group.position.y;
-    const maxY = this.group.position.y + this.bodyHeight;
+    const maxY = this.group.position.y + h;
     for (const c of colliders) {
       if (
         maxX > c.min.x &&

@@ -126,11 +126,6 @@ export class TargetRush implements GameMode {
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
-    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) {
-      ctx.kickView?.trigger();
-      ctx.weapons.triggerKickDip();
-    }
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -205,12 +200,6 @@ export class MovingRange implements GameMode {
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
-
-    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) {
-      ctx.kickView?.trigger();
-      ctx.weapons.triggerKickDip();
-    }
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -332,12 +321,6 @@ export class Parkour implements GameMode {
   update(ctx: GameContext, dt: number, now: number): void {
     if (this.finished) return;
     ctx.player.getEyePosition(this.eye);
-
-    // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) {
-      ctx.kickView?.trigger();
-      ctx.weapons.triggerKickDip();
-    }
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -860,13 +843,23 @@ export class WaveSurvival implements GameMode {
 // 撃ち返してくるボットと戦い、制限時間内のキル数を競う。
 // ボットは常に一定数いて、倒すと少し後に別の位置で復活する。
 // プレイヤーは体力が0になるとデスが付き、数秒後に初期位置で復活する。
+// ボット1体ぶんのデータ
+type BotEntry = {
+  unit: EnemyUnit;
+  hp: number;
+  nextShot: number;
+  knockback: number; // ノックバック残り時間（秒）
+  kbx: number; // ノックバックの向きX
+  kbz: number; // ノックバックの向きZ
+};
+
 export class BotDeathmatch implements GameMode {
   id = "botdm";
   label = "ボット・デスマッチ";
   description = "撃ち返すボットと戦い、制限時間内のキル数を競う。やられても復活する。";
 
   private ctx: GameContext | null = null;
-  private bots: { unit: EnemyUnit; hp: number; nextShot: number }[] = [];
+  private bots: BotEntry[] = [];
   private respawnQueue: number[] = []; // ボットを補充する時刻のリスト
   private kills = 0;
   private deaths = 0;
@@ -931,6 +924,9 @@ export class BotDeathmatch implements GameMode {
       unit,
       hp: this.BOT_HP,
       nextShot: now + 1 + Math.random() * 1.5,
+      knockback: 0,
+      kbx: 0,
+      kbz: 0,
     });
   }
 
@@ -946,10 +942,7 @@ export class BotDeathmatch implements GameMode {
   }
 
   // ボットを倒す。撤去して撃破数を増やし、補充を予約する。
-  private killBot(
-    b: { unit: EnemyUnit; hp: number; nextShot: number },
-    now: number
-  ): void {
+  private killBot(b: BotEntry, now: number): void {
     if (!this.ctx) return;
     this.ctx.scene.remove(b.unit.group);
     b.unit.dispose();
@@ -981,12 +974,12 @@ export class BotDeathmatch implements GameMode {
 
     ctx.player.getEyePosition(this.eye);
 
-    // 蹴り：クールダウンが明けていて入力があれば、周囲の近いボットを弾く
+    // 蹴り：クールダウンが明けていて入力があれば、近いボットを弾く
     if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
       this.nextKickTime = now + 0.8;
       if (ctx.kickView) ctx.kickView.trigger();
       ctx.weapons.triggerKickDip();
-      this.doKick();
+      this.doKickBots(now);
     }
 
     for (const b of this.bots) {
@@ -994,6 +987,21 @@ export class BotDeathmatch implements GameMode {
       const dz = this.eye.z - b.unit.group.position.z;
       const d = Math.hypot(dx, dz);
       b.unit.faceTo(dx, dz);
+
+      // ノックバック中はAIを止めて、後方へ滑らかに吹き飛ばす
+      if (b.knockback > 0) {
+        const kbSpeed = 18 * (b.knockback / 0.3);
+        b.knockback -= dt;
+        b.unit.moveToward(
+          b.unit.group.position.x + b.kbx,
+          b.unit.group.position.z + b.kbz,
+          kbSpeed,
+          dt,
+          ctx.stage.colliders
+        );
+        b.unit.update(dt, "idle");
+        continue;
+      }
 
       if (d > this.BOT_RANGE) {
         // 射程外：壁やブロックを避けて歩いて近づく
@@ -1068,10 +1076,9 @@ export class BotDeathmatch implements GameMode {
     return true;
   }
 
-  // 蹴り：周囲2.5m以内のボットを外向きに弾き、ダメージを与える。足モーションも出す。
-  private doKick(): void {
+  // 蹴り：プレイヤーの周囲2.5m以内のボットを、後方へ吹き飛ばしてダメージを与える。
+  private doKickBots(now: number): void {
     if (!this.ctx) return;
-    const now = performance.now() / 1000;
     let hitAny = false;
     for (let i = this.bots.length - 1; i >= 0; i--) {
       const b = this.bots[i];
@@ -1081,15 +1088,10 @@ export class BotDeathmatch implements GameMode {
       if (d > 2.5) continue;
       const nx = d > 0.001 ? dx / d : 0;
       const nz = d > 0.001 ? dz / d : 1;
-      b.unit.group.position.x = Math.max(
-        -29,
-        Math.min(29, b.unit.group.position.x + nx * 4)
-      );
-      b.unit.group.position.z = Math.max(
-        -29,
-        Math.min(29, b.unit.group.position.z + nz * 4)
-      );
-      b.hp -= 20;
+      b.knockback = 0.3;
+      b.kbx = nx;
+      b.kbz = nz;
+      b.hp -= 40;
       hitAny = true;
       if (b.hp <= 0) this.killBot(b, now);
     }

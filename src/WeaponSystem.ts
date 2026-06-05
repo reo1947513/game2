@@ -43,6 +43,11 @@ export class WeaponSystem {
   // ヘッドショットなどの通知
   private hitmarker = new Hitmarker();
 
+  // 蹴り用の脚モデルとモーションの進行時間
+  private kickLeg: THREE.Group;
+  private kickTimer = 0;
+  private readonly KICK_DURATION = 0.35;
+
   // リロード動作の進み具合（0=通常、1=最も大きく動いた瞬間）。見た目だけに使います。
   private reloadAnim = 0;
 
@@ -80,6 +85,9 @@ export class WeaponSystem {
     this.weapons.get(WeaponKind.Shotgun)!.model.visible = false;
     this.weapons.get(WeaponKind.Smg)!.model.visible = false;
 
+    // 蹴り用の脚（通常は画面下に隠れている）
+    this.kickLeg = this.buildKickLeg();
+
     // 初期の武器名を表示する
     this.hud.setWeaponName(this.weapons.get(this.current)!.spec.displayName);
 
@@ -103,6 +111,13 @@ export class WeaponSystem {
     this.hud.setAmmo(w.mag, w.reserve);
   }
 
+  // 蹴りの見た目を出す。hit=true なら命中マーカーも点滅させる。
+  kick(hit: boolean): void {
+    this.kickTimer = this.KICK_DURATION;
+    this.kickLeg.visible = true;
+    if (hit) this.hud.flashHitmarker();
+  }
+
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
   private metal(color: number): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({
@@ -110,6 +125,23 @@ export class WeaponSystem {
       roughness: 0.45,
       metalness: 0.7,
     });
+  }
+
+  // 蹴り用の脚モデル（カメラの子）。通常は画面下に隠し、蹴りで前へ振り出す。
+  private buildKickLeg(): THREE.Group {
+    const g = new THREE.Group();
+    const mat = this.metal(0x2a2d33);
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.5, 0.17), mat);
+    thigh.position.set(0, -0.25, 0);
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.45, 0.14), mat);
+    shin.position.set(0, -0.68, -0.04);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.32), mat);
+    foot.position.set(0, -0.9, -0.14);
+    g.add(thigh, shin, foot);
+    g.position.set(0.12, -1.35, -0.4);
+    g.visible = false;
+    this.camera.add(g);
+    return g;
   }
 
   private buildAssault(): WeaponInstance {
@@ -362,6 +394,7 @@ export class WeaponSystem {
     this.updateTransforms(dt, input, playerSpeed);
     this.updateFov();
     this.updateMuzzle(dt);
+    this.updateKick(dt);
     this.updateHud(playerSpeed);
 
     // 発砲拡散と見た目反動を時間で戻す
@@ -576,6 +609,20 @@ export class WeaponSystem {
       if (this.muzzleTimer <= 0) {
         for (const w of this.weapons.values()) w.muzzle.visible = false;
       }
+    }
+  }
+
+  // 蹴りモーションを進める。下から前へ振り出し、戻したら隠す。
+  private updateKick(dt: number): void {
+    if (this.kickTimer <= 0) return;
+    this.kickTimer -= dt;
+    const p = Math.max(0, Math.min(1, 1 - this.kickTimer / this.KICK_DURATION)); // 0→1
+    const swing = Math.sin(p * Math.PI); // 0→1→0
+    this.kickLeg.position.set(0.12, -1.35 + swing * 0.75, -0.4 - swing * 0.95);
+    this.kickLeg.rotation.x = swing * 1.3; // 足先を前へ蹴り上げる
+    if (this.kickTimer <= 0) {
+      this.kickLeg.visible = false;
+      this.kickLeg.rotation.x = 0;
     }
   }
 

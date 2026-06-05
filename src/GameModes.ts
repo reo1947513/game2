@@ -636,6 +636,7 @@ export class WaveSurvival implements GameMode {
   // 囲まれたときに距離を作るための手段。撃破に至ればアイテムも落ちる。
   private doKick(): void {
     if (!this.ctx) return;
+    let hitAny = false;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       const dx = e.unit.group.position.x - this.eye.x;
@@ -654,8 +655,11 @@ export class WaveSurvival implements GameMode {
         Math.min(29, e.unit.group.position.z + nz * 4)
       );
       e.hp -= 40;
+      hitAny = true;
       if (e.hp <= 0) this.removeEnemy(e, true);
     }
+    // 足のモーションを出す。敵に当たっていれば命中マーカーも点滅させる。
+    this.ctx.weapons.kick(hitAny);
   }
 
   update(ctx: GameContext, dt: number, now: number): void {

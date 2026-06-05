@@ -529,3 +529,196 @@ export class WaveSurvival implements GameMode {
     this.ctx = null;
   }
 }
+
+// ===== モード5：ボット・デスマッチ =====
+// 撃ち返してくるボットと戦い、制限時間内のキル数を競う。
+// ボットは常に一定数いて、倒すと少し後に別の位置で復活する。
+// プレイヤーは体力が0になるとデスが付き、数秒後に初期位置で復活する。
+export class BotDeathmatch implements GameMode {
+  id = "botdm";
+  label = "ボット・デスマッチ";
+  description = "撃ち返すボットと戦い、制限時間内のキル数を競う。やられても復活する。";
+
+  private ctx: GameContext | null = null;
+  private bots: { unit: EnemyUnit; hp: number; nextShot: number }[] = [];
+  private respawnQueue: number[] = []; // ボットを補充する時刻のリスト
+  private kills = 0;
+  private deaths = 0;
+  private endTime = 0;
+  private alive = false;
+  private playerDead = false;
+  private playerRespawnAt = 0;
+  private eye = new THREE.Vector3();
+
+  private readonly BOT_COUNT = 3;
+  private readonly DURATION = 120; // 制限時間（秒）
+  private readonly BOT_HP = 60;
+  private readonly BOT_SPEED = 2.2;
+
+  enter(ctx: GameContext, now: number): void {
+    this.ctx = ctx;
+    this.bots = [];
+    this.respawnQueue = [];
+    this.kills = 0;
+    this.deaths = 0;
+    this.alive = true;
+    this.playerDead = false;
+    this.playerRespawnAt = 0;
+    this.endTime = now + this.DURATION;
+
+    ctx.health.reset(100);
+    ctx.health.show();
+    ctx.ui.showHud(true);
+    ctx.player.respawn(0, 0, 8); // 初期位置から開始
+
+    ctx.weapons.enemyHitHook = (obj: THREE.Object3D, damage: number) =>
+      this.onBotShot(obj, damage);
+
+    for (let i = 0; i < this.BOT_COUNT; i++) this.spawnBot(now);
+    this.updateHud(now);
+  }
+
+  // ボットを1体、プレイヤーから離れた位置に出す
+  private spawnBot(now: number): void {
+    if (!this.ctx) return;
+    this.ctx.player.getEyePosition(this.eye);
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 15 + Math.random() * 10;
+    const x = Math.max(-28, Math.min(28, this.eye.x + Math.cos(angle) * dist));
+    const z = Math.max(-28, Math.min(28, this.eye.z + Math.sin(angle) * dist));
+
+    const unit = new EnemyUnit();
+    unit.setGround(x, z);
+    this.ctx.scene.add(unit.group);
+    this.ctx.weapons.enemyTargets.push(unit.hitbox);
+    this.bots.push({
+      unit,
+      hp: this.BOT_HP,
+      nextShot: now + 1 + Math.random() * 1.5,
+    });
+  }
+
+  // 弾がボットに当たったとき。武器の威力ぶん体力を削る。
+  private onBotShot(obj: THREE.Object3D, damage: number): void {
+    const now = performance.now() / 1000;
+    const b = this.bots.find((x) => x.unit.hitbox === obj);
+    if (!b) return;
+    b.hp -= damage;
+    if (b.hp <= 0) this.killBot(b, now);
+  }
+
+  // ボットを倒す。撤去して撃破数を増やし、補充を予約する。
+  private killBot(
+    b: { unit: EnemyUnit; hp: number; nextShot: number },
+    now: number
+  ): void {
+    if (!this.ctx) return;
+    this.ctx.scene.remove(b.unit.group);
+    b.unit.dispose();
+    const ti = this.ctx.weapons.enemyTargets.indexOf(b.unit.hitbox);
+    if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+    const bi = this.bots.indexOf(b);
+    if (bi >= 0) this.bots.splice(bi, 1);
+    this.kills++;
+    this.respawnQueue.push(now + 3); // 3秒後に補充
+  }
+
+  update(ctx: GameContext, dt: number, now: number): void {
+    if (!this.alive) return;
+
+    // 制限時間
+    if (now >= this.endTime) {
+      this.finishMatch(ctx);
+      return;
+    }
+
+    // プレイヤーの復活
+    if (this.playerDead && now >= this.playerRespawnAt) {
+      ctx.player.respawn(0, 0, 8);
+      ctx.health.reset(100);
+      this.playerDead = false;
+    }
+
+    ctx.player.getEyePosition(this.eye);
+
+    for (const b of this.bots) {
+      const dx = this.eye.x - b.unit.group.position.x;
+      const dz = this.eye.z - b.unit.group.position.z;
+      const d = Math.hypot(dx, dz);
+      b.unit.faceTo(dx, dz);
+
+      if (d > 8) {
+        // 遠い：歩いて近づく
+        if (d > 0.001) {
+          b.unit.group.position.x += (dx / d) * this.BOT_SPEED * dt;
+          b.unit.group.position.z += (dz / d) * this.BOT_SPEED * dt;
+        }
+        b.unit.update(dt, "walk");
+      } else {
+        // 射程内：止まって撃つ
+        b.unit.update(dt, "attack");
+        if (!this.playerDead && now >= b.nextShot) {
+          b.nextShot = now + 1.2 + Math.random() * 0.8;
+          // 近いほど当たりやすい
+          const hitChance = Math.max(0.12, Math.min(0.5, 0.55 - d * 0.03));
+          if (Math.random() < hitChance) {
+            ctx.health.damage(10);
+            if (ctx.health.isDead() && !this.playerDead) {
+              this.deaths++;
+              this.playerDead = true;
+              this.playerRespawnAt = now + 3;
+            }
+          }
+        }
+      }
+    }
+
+    // 補充の時刻が来たボットを出す
+    for (let i = this.respawnQueue.length - 1; i >= 0; i--) {
+      if (now >= this.respawnQueue[i]) {
+        this.respawnQueue.splice(i, 1);
+        this.spawnBot(now);
+      }
+    }
+
+    this.updateHud(now);
+  }
+
+  private updateHud(now: number): void {
+    if (!this.ctx) return;
+    const remain = Math.max(0, Math.ceil(this.endTime - now));
+    const lines = [
+      `残り ${remain} 秒`,
+      `キル ${this.kills}`,
+      `デス ${this.deaths}`,
+    ];
+    if (this.playerDead) {
+      lines.push(`復活まで ${Math.max(0, Math.ceil(this.playerRespawnAt - now))} 秒`);
+    }
+    this.ctx.ui.setHud(lines);
+  }
+
+  private finishMatch(ctx: GameContext): void {
+    this.alive = false;
+    ctx.finish([
+      "ボット・デスマッチ 結果",
+      `キル ${this.kills}`,
+      `デス ${this.deaths}`,
+    ]);
+  }
+
+  exit(ctx: GameContext): void {
+    for (const b of this.bots) {
+      ctx.scene.remove(b.unit.group);
+      b.unit.dispose();
+      const ti = ctx.weapons.enemyTargets.indexOf(b.unit.hitbox);
+      if (ti >= 0) ctx.weapons.enemyTargets.splice(ti, 1);
+    }
+    this.bots = [];
+    this.respawnQueue = [];
+    ctx.weapons.enemyHitHook = null;
+    ctx.health.hide();
+    ctx.ui.showHud(false);
+    this.ctx = null;
+  }
+}

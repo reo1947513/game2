@@ -53,8 +53,8 @@ export class WeaponSystem {
 
   // モードが登録する「動く敵」のメッシュ。射撃の対象に加わる。
   enemyTargets: THREE.Object3D[] = [];
-  // 動く敵に当たったとき呼ばれる。モードが撃破などを処理する。
-  enemyHitHook: ((obj: THREE.Object3D) => void) | null = null;
+  // 動く敵に当たったとき呼ばれる。obj は当たった敵、damage は武器の威力。
+  enemyHitHook: ((obj: THREE.Object3D, damage: number) => void) | null = null;
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -329,7 +329,7 @@ export class WeaponSystem {
       // まず「動く敵」かどうかを見る。敵ならモードに処理を任せる。
       if (this.enemyTargets.indexOf(obj) >= 0) {
         this.hud.flashHitmarker();
-        if (this.enemyHitHook) this.enemyHitHook(obj);
+        if (this.enemyHitHook) this.enemyHitHook(obj, w.spec.damage);
       } else {
         const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
         if (target) {

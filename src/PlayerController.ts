@@ -90,6 +90,12 @@ export class PlayerController {
     return Math.hypot(this.velocity.x, this.velocity.z);
   }
 
+  // 指定位置へ戻し、速度を0にする（リスポーン用）。既定は初期スポーン地点。
+  respawn(x = 0, y = 0, z = 8): void {
+    this.position.set(x, y, z);
+    this.velocity.set(0, 0, 0);
+  }
+
   // カメラに渡す目線のワールド座標
   getEyePosition(out: THREE.Vector3): THREE.Vector3 {
     return out.set(

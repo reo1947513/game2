@@ -6,7 +6,7 @@ import { WeaponSystem } from "./WeaponSystem";
 import { HUD } from "./HUD";
 import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
-import { GameContext, ModeManager, TargetRush, MovingRange } from "./GameModes";
+import { GameContext, ModeManager, TargetRush, MovingRange, Parkour } from "./GameModes";
 
 // すべてのシステムを組み合わせて毎フレーム動かす中心クラスです。
 export class Game {
@@ -68,12 +68,13 @@ export class Game {
 
     // モード関連（選択画面・結果画面・モード中の表示と、モードの管理）
     this.ui = new ModeUI();
-    this.modeManager = new ModeManager([new TargetRush(), new MovingRange()]);
+    this.modeManager = new ModeManager([new TargetRush(), new MovingRange(), new Parkour()]);
     this.ctx = {
       scene: this.scene,
       stage: this.stage,
       weapons: this.weapons,
       ui: this.ui,
+      player: this.player,
       finish: (lines: string[]) => this.onModeFinish(lines),
     };
 

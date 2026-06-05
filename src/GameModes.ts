@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { Stage, Target } from "./Stage";
 import { WeaponSystem } from "./WeaponSystem";
 import { ModeUI } from "./ModeUI";
+import { PlayerController } from "./PlayerController";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -9,6 +10,7 @@ export interface GameContext {
   stage: Stage;
   weapons: WeaponSystem;
   ui: ModeUI;
+  player: PlayerController;
   // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
   finish: (lines: string[]) => void;
 }
@@ -218,6 +220,143 @@ export class MovingRange implements GameMode {
     this.motions.clear();
     ctx.weapons.shotFiredHook = null;
     ctx.weapons.targetHitHook = null;
+    ctx.ui.showHud(false);
+  }
+}
+
+// ===== モード3：パルクール・タイムトライアル =====
+// 専用の足場とチェックポイントを生成し、順に巡ってゴールまでのタイムを計る。
+// 射撃は使わず、移動（ジャンプ・2段・壁ジャンプ・スライド）が主役。
+export class Parkour implements GameMode {
+  id = "parkour";
+  label = "パルクール・タイムトライアル";
+  description = "足場を飛び移りチェックポイントを最短で巡る。移動操作が主役。";
+
+  private platforms: { mesh: THREE.Mesh; box: THREE.Box3 }[] = [];
+  private points: { pos: THREE.Vector3; mesh: THREE.Mesh }[] = [];
+  private index = 0;
+  private startTime = 0;
+  private finished = false;
+  private eye = new THREE.Vector3();
+
+  // 足場の中心位置（x, y, z）。ジャンプで届く間隔・高さに並べてある。
+  private readonly spots: Array<[number, number, number]> = [
+    [5, 1.2, -6],
+    [10, 2.6, -12],
+    [4, 4.2, -17],
+    [-3, 5.6, -13],
+    [-9, 7.0, -5],
+  ];
+
+  enter(ctx: GameContext, now: number): void {
+    this.index = 0;
+    this.finished = false;
+    this.startTime = now;
+    this.platforms = [];
+    this.points = [];
+
+    for (const [x, y, z] of this.spots) {
+      // 足場（当たり判定つき）
+      const pgeo = new THREE.BoxGeometry(3, 0.5, 3);
+      const pmat = new THREE.MeshStandardMaterial({
+        color: 0x3a4a59,
+        roughness: 0.8,
+        metalness: 0.1,
+      });
+      const pmesh = new THREE.Mesh(pgeo, pmat);
+      pmesh.position.set(x, y, z);
+      pmesh.castShadow = true;
+      pmesh.receiveShadow = true;
+      ctx.scene.add(pmesh);
+      const box = new THREE.Box3().setFromObject(pmesh);
+      ctx.stage.colliders.push(box);
+      this.platforms.push({ mesh: pmesh, box });
+
+      // チェックポイント（足場の上に立つ光る輪）
+      const cgeo = new THREE.CylinderGeometry(1.0, 1.0, 2.4, 16, 1, true);
+      const cmat = new THREE.MeshStandardMaterial({
+        color: 0xffc24a,
+        emissive: 0x332000,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide,
+      });
+      const cmesh = new THREE.Mesh(cgeo, cmat);
+      cmesh.position.set(x, y + 1.6, z);
+      ctx.scene.add(cmesh);
+      this.points.push({ pos: new THREE.Vector3(x, y + 1.6, z), mesh: cmesh });
+    }
+
+    this.highlight();
+    ctx.ui.showHud(true);
+  }
+
+  // 現在のチェックポイントを明るく、通過済みを薄く、未到達を中間の明るさにする
+  private highlight(): void {
+    this.points.forEach((p, i) => {
+      const m = p.mesh.material as THREE.MeshStandardMaterial;
+      if (i === this.index) {
+        m.emissive.set(0xffaa30);
+        m.opacity = 0.85;
+      } else if (i < this.index) {
+        m.emissive.set(0x000000);
+        m.opacity = 0.1;
+      } else {
+        m.emissive.set(0x332000);
+        m.opacity = 0.35;
+      }
+    });
+  }
+
+  update(ctx: GameContext, dt: number, now: number): void {
+    if (this.finished) return;
+    ctx.player.getEyePosition(this.eye);
+
+    const cur = this.points[this.index];
+    cur.mesh.rotation.y += dt * 1.5;
+
+    const dx = this.eye.x - cur.pos.x;
+    const dz = this.eye.z - cur.pos.z;
+    const dy = this.eye.y - cur.pos.y;
+    if (Math.hypot(dx, dz) < 2.5 && Math.abs(dy) < 3.0) {
+      this.index++;
+      if (this.index >= this.points.length) {
+        this.finished = true;
+        const t = now - this.startTime;
+        ctx.finish([
+          "パルクール 結果",
+          `タイム ${t.toFixed(2)} 秒`,
+          `チェックポイント ${this.points.length}/${this.points.length}`,
+        ]);
+        return;
+      }
+      this.highlight();
+    }
+
+    const elapsed = now - this.startTime;
+    ctx.ui.setHud([
+      `タイム ${elapsed.toFixed(1)} 秒`,
+      `チェックポイント ${this.index}/${this.points.length}`,
+    ]);
+  }
+
+  exit(ctx: GameContext): void {
+    // 足場（メッシュと当たり判定）を撤去する
+    for (const p of this.platforms) {
+      ctx.scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+      const i = ctx.stage.colliders.indexOf(p.box);
+      if (i >= 0) ctx.stage.colliders.splice(i, 1);
+    }
+    // チェックポイントを撤去する
+    for (const c of this.points) {
+      ctx.scene.remove(c.mesh);
+      c.mesh.geometry.dispose();
+      (c.mesh.material as THREE.Material).dispose();
+    }
+    this.platforms = [];
+    this.points = [];
     ctx.ui.showHud(false);
   }
 }

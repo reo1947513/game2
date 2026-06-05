@@ -209,6 +209,8 @@ export class Game {
     // 武器・的・HUD更新
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
     this.stage.updateTargets(now);
+    // モードが蹴りや投擲の判定に使えるよう、その瞬間の入力を渡す
+    this.ctx.frameInput = inputState;
     // 現在のモードの更新（スコア・残り時間・的の動き・終了判定など）
     this.modeManager.update(this.ctx, dt, now);
     this.hud.update(dt);

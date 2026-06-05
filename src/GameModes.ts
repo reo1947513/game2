@@ -6,6 +6,7 @@ import { PlayerController } from "./PlayerController";
 import { Health } from "./Health";
 import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
+import { InputState } from "./types";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -17,6 +18,8 @@ export interface GameContext {
   health: Health;
   // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
   finish: (lines: string[]) => void;
+  // Game本体が毎フレーム入れる、その瞬間の入力。モードが蹴り・投擲の判定に使う。
+  frameInput?: InputState;
 }
 
 // 1つの遊び方（モード）の共通の形です。
@@ -485,6 +488,7 @@ export class WaveSurvival implements GameMode {
   private alive = false;
   private eye = new THREE.Vector3();
   private nextContactTime = 0; // 接触ダメージの間隔管理（秒）
+  private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
@@ -494,6 +498,7 @@ export class WaveSurvival implements GameMode {
     this.kills = 0;
     this.alive = true;
     this.nextContactTime = now;
+    this.nextKickTime = now;
 
     ctx.health.reset(100);
     ctx.health.show();
@@ -627,9 +632,41 @@ export class WaveSurvival implements GameMode {
     this.pickups.push(pk);
   }
 
+  // 蹴り：プレイヤーの周囲2.5m以内の敵を、外向きに弾き飛ばしてダメージを与える。
+  // 囲まれたときに距離を作るための手段。撃破に至ればアイテムも落ちる。
+  private doKick(): void {
+    if (!this.ctx) return;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = e.unit.group.position.x - this.eye.x;
+      const dz = e.unit.group.position.z - this.eye.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.5) continue;
+      // プレイヤーから外向きへ弾く
+      const nx = d > 0.001 ? dx / d : 0;
+      const nz = d > 0.001 ? dz / d : 1;
+      e.unit.group.position.x = Math.max(
+        -29,
+        Math.min(29, e.unit.group.position.x + nx * 4)
+      );
+      e.unit.group.position.z = Math.max(
+        -29,
+        Math.min(29, e.unit.group.position.z + nz * 4)
+      );
+      e.hp -= 40;
+      if (e.hp <= 0) this.removeEnemy(e, true);
+    }
+  }
+
   update(ctx: GameContext, dt: number, now: number): void {
     if (!this.alive) return;
     ctx.player.getEyePosition(this.eye);
+
+    // 蹴り：クールダウンが明けていて入力があれば、周囲の近い敵を弾く
+    if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
+      this.nextKickTime = now + 0.8;
+      this.doKick();
+    }
 
     let contacting = false;
     let playerDamaged = false;

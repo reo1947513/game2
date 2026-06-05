@@ -17,6 +17,7 @@ export class Input {
   private proneQueued = false;
   private reloadQueued = false;
   private switchQueued: WeaponKind | null = null;
+  private kickQueued = false;
 
   private locked = false;
 
@@ -66,6 +67,7 @@ export class Input {
       if (code === "Digit2") this.switchQueued = WeaponKind.Sniper;
       if (code === "Digit3") this.switchQueued = WeaponKind.Shotgun;
       if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
+      if (code === "KeyV") this.kickQueued = true;
     }
     this.keys.add(code);
     // ブラウザ既定動作（スクロール等）を抑止
@@ -162,6 +164,9 @@ export class Input {
   queueSwitch(kind: WeaponKind): void {
     this.switchQueued = kind;
   }
+  queueKick(): void {
+    this.kickQueued = true;
+  }
 
   // 毎フレーム呼ぶ。現在の入力をまとめて返す。
   sample(): InputState {
@@ -189,6 +194,7 @@ export class Input {
       aiming: this.mouseDownRight || this.touchAiming,
       reloadPressed: this.reloadQueued,
       switchTo: this.switchQueued,
+      kickPressed: this.kickQueued,
       yaw: this.yaw,
       pitch: this.pitch,
     };
@@ -198,6 +204,7 @@ export class Input {
     this.proneQueued = false;
     this.reloadQueued = false;
     this.switchQueued = null;
+    this.kickQueued = false;
 
     return state;
   }

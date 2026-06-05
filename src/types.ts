@@ -30,6 +30,7 @@ export interface InputState {
   aiming: boolean; // 右クリック保持（ADS）
   reloadPressed: boolean;
   switchTo: WeaponKind | null; // 数字キーで武器切替
+  kickPressed: boolean; // 蹴り（押した瞬間）
   // 視点（マウス移動の累積から計算した向き）
   yaw: number;
   pitch: number;

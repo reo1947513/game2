@@ -6,6 +6,10 @@ import { WeaponKind } from "./types";
 // その入力を Input クラスへ流し込みます。配置・大きさ・透明度を設定でき、
 // 3つの保存枠に記録できます。ゲーム中の一時停止メニューから設定を開きます。
 //
+// ボタンの大きさは「全体の基準サイズ(size)」×「各ボタンの倍率(scales)」で決まり、
+// 全体スライダーで一括調整したうえで、配置編集画面でボタンごとに微調整できます。
+// 3パターンの保存・読込も配置編集画面の中で行います。
+//
 // スプリント（ダッシュ）は専用ボタンを廃止し、移動スティックを前方へ深く倒し
 // 続けると一定時間（SPRINT_DELAY）で発動する方式にしています。
 // 武器切替はトグル式の1ボタンに統合しています。
@@ -24,9 +28,10 @@ interface Vec2 {
 }
 
 interface Layout {
-  size: number; // ボタンの基準サイズ(px)
+  size: number; // ボタンの基準サイズ(px)。全体スライダーで変える。
   opacity: number; // 0〜1
   pos: Record<string, Vec2>; // 各要素の位置(画面に対する%)
+  scales: Record<string, number>; // 各要素の大きさ倍率(既定1.0)。ボタンごとに変える。
 }
 
 interface TouchCallbacks {
@@ -43,6 +48,10 @@ type HoldKey = "fire" | "ads" | "sprint" | "crouch";
 const SPRINT_DELAY = 500;
 const SPRINT_DEEP = 0.85;
 
+// 個別サイズ倍率の下限・上限（％はこの値×100）
+const SCALE_MIN = 0.6;
+const SCALE_MAX = 1.6;
+
 const ACTIONS: ActionDef[] = [
   { key: "fire", label: "射撃", type: "hold" },
   { key: "ads", label: "ADS", type: "hold" },
@@ -53,6 +62,18 @@ const ACTIONS: ActionDef[] = [
   // 武器切替トグル（タップでアサルト⇔スナイパー）。ラベルは現在の武器名を表示。
   { key: "weapon", label: "ASSAULT", type: "tap" },
 ];
+
+// サイズ編集の見出しに使う、要素ごとの表示名
+const DISPLAY_NAMES: Record<string, string> = {
+  move: "移動",
+  fire: "射撃",
+  ads: "ADS",
+  jump: "ジャンプ",
+  reload: "リロード",
+  crouch: "しゃがむ",
+  prone: "伏せ",
+  weapon: "武器",
+};
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
 const DEFAULT_LAYOUT: Layout = {
@@ -68,6 +89,7 @@ const DEFAULT_LAYOUT: Layout = {
     prone: { x: 55, y: 84 },
     weapon: { x: 50, y: 10 },
   },
+  scales: {},
 };
 
 const LS_LAST = "arena_touch_last";
@@ -113,6 +135,10 @@ export class TouchControls {
   private sizeSlider: HTMLInputElement;
   private opacitySlider: HTMLInputElement;
 
+  // 配置編集画面で使う、選択中ボタンの大きさスライダーとその見出し
+  private editSizeSlider: HTMLInputElement;
+  private editSizeLabel: HTMLElement;
+
   private btnMap: Record<string, HTMLElement> = {};
 
   private mode: Mode = "play";
@@ -135,6 +161,9 @@ export class TouchControls {
   private dragKey: string | null = null;
   private dragEl: HTMLElement | null = null;
   private dragId: number | null = null;
+
+  // 配置編集で「大きさ調整の対象」として選んでいるボタン（move含む）
+  private selectedKey: string | null = null;
 
   // 武器切替トグルの現在状態（ゲーム開始時はアサルト）
   private touchWeapon: WeaponKind = WeaponKind.Assault;
@@ -188,9 +217,9 @@ export class TouchControls {
     const setCard = el("div", "tc-card tc-card-wide");
     setCard.appendChild(el("div", "tc-card-title", "操作設定"));
 
-    // 大きさスライダー
+    // 大きさスライダー（全体一括の基準サイズ）
     const sizeRow = el("div", "tc-row");
-    sizeRow.appendChild(el("span", "tc-row-label", "ボタンの大きさ"));
+    sizeRow.appendChild(el("span", "tc-row-label", "全体の大きさ"));
     this.sizeSlider = el("input", "tc-slider") as HTMLInputElement;
     this.sizeSlider.type = "range";
     this.sizeSlider.min = "44";
@@ -210,8 +239,8 @@ export class TouchControls {
     opacityRow.appendChild(this.opacitySlider);
     setCard.appendChild(opacityRow);
 
-    // 配置編集ボタン
-    const btnEdit = el("button", "tc-menu-btn", "ボタンの配置を編集");
+    // 配置・大きさ編集ボタン
+    const btnEdit = el("button", "tc-menu-btn", "ボタンの配置と大きさを編集");
     setCard.appendChild(btnEdit);
 
     // 操作のヒント（スプリントの操作方法）
@@ -223,8 +252,39 @@ export class TouchControls {
       )
     );
 
-    // 保存枠（3つ）
-    setCard.appendChild(el("div", "tc-section-label", "配置パターンの保存（3つまで）"));
+    const btnBack = el("button", "tc-menu-btn tc-menu-btn-primary", "戻る");
+    setCard.appendChild(btnBack);
+    this.settingsPanel.appendChild(setCard);
+
+    // ---- 配置編集パネル（画面上部に表示。プレイUIは下に見えたまま編集する） ----
+    this.editBanner = el("div", "tc-edit-banner");
+
+    // 1段目：説明＋完了ボタン
+    const editTop = el("div", "tc-edit-top");
+    editTop.appendChild(
+      el("span", "tc-edit-text", "タップで選択 → 大きさ調整／ドラッグで移動")
+    );
+    const btnEditDone = el("button", "tc-edit-done", "完了");
+    editTop.appendChild(btnEditDone);
+    this.editBanner.appendChild(editTop);
+
+    // 2段目：選択中ボタンの大きさスライダー
+    const sizeEditRow = el("div", "tc-row");
+    this.editSizeLabel = el("span", "tc-row-label", "大きさ（ボタンを選択）");
+    sizeEditRow.appendChild(this.editSizeLabel);
+    this.editSizeSlider = el("input", "tc-slider") as HTMLInputElement;
+    this.editSizeSlider.type = "range";
+    this.editSizeSlider.min = String(Math.round(SCALE_MIN * 100));
+    this.editSizeSlider.max = String(Math.round(SCALE_MAX * 100));
+    this.editSizeSlider.step = "5";
+    this.editSizeSlider.disabled = true;
+    sizeEditRow.appendChild(this.editSizeSlider);
+    this.editBanner.appendChild(sizeEditRow);
+
+    // 3段目：3パターンの保存・読込
+    this.editBanner.appendChild(
+      el("div", "tc-section-label", "配置パターンの保存（3つまで）")
+    );
     for (let n = 1; n <= 3; n++) {
       const row = el("div", "tc-slot-row");
       row.appendChild(el("span", "tc-slot-label", `パターン${n}`));
@@ -234,18 +294,8 @@ export class TouchControls {
       load.addEventListener("click", () => this.loadSlot(n, load));
       row.appendChild(save);
       row.appendChild(load);
-      setCard.appendChild(row);
+      this.editBanner.appendChild(row);
     }
-
-    const btnBack = el("button", "tc-menu-btn tc-menu-btn-primary", "戻る");
-    setCard.appendChild(btnBack);
-    this.settingsPanel.appendChild(setCard);
-
-    // 配置編集中の上部バー
-    this.editBanner = el("div", "tc-edit-banner");
-    this.editBanner.appendChild(el("span", "tc-edit-text", "ドラッグでボタンを配置"));
-    const btnEditDone = el("button", "tc-edit-done", "完了");
-    this.editBanner.appendChild(btnEditDone);
 
     // ---- 組み立て ----
     this.root.appendChild(this.lookLayer);
@@ -282,6 +332,13 @@ export class TouchControls {
       this.layout.opacity = Number(this.opacitySlider.value) / 100;
       this.applyLayout();
     });
+    // 選択中ボタンの大きさ（倍率）を変える
+    this.editSizeSlider.addEventListener("input", () => {
+      if (!this.selectedKey) return;
+      this.layout.scales[this.selectedKey] =
+        Number(this.editSizeSlider.value) / 100;
+      this.applyLayout();
+    });
   }
 
   // タッチ操作を有効化（スマホ・タブレットでゲーム開始時に呼ぶ）
@@ -292,6 +349,12 @@ export class TouchControls {
     this.root.style.display = "block";
     this.applyLayout();
     this.setMode("play");
+  }
+
+  // 各要素の実サイズ(px)＝全体サイズ×個別倍率
+  private realSize(key: string): number {
+    const scale = this.layout.scales[key] ?? 1;
+    return this.layout.size * scale;
   }
 
   // ---- 視点ドラッグ ----
@@ -364,7 +427,7 @@ export class TouchControls {
   }
 
   private updateJoystick(cx: number, cy: number): void {
-    const maxR = this.layout.size * 1.1;
+    const maxR = this.realSize("move") * 1.1;
     let dx = cx - this.joyCenter.x;
     let dy = cy - this.joyCenter.y;
     const dist = Math.hypot(dx, dy);
@@ -478,12 +541,14 @@ export class TouchControls {
     }
   }
 
-  // ---- 配置編集（ドラッグ移動） ----
+  // ---- 配置編集（ドラッグ移動＋タップ選択） ----
   private startDrag(key: string, target: HTMLElement, e: PointerEvent): void {
     this.dragKey = key;
     this.dragEl = target;
     this.dragId = e.pointerId;
     target.setPointerCapture(e.pointerId);
+    // タップ（またはドラッグ開始）でそのボタンを大きさ調整の対象に選ぶ
+    this.selectKey(key);
   }
 
   private onDrag(e: PointerEvent): void {
@@ -502,6 +567,41 @@ export class TouchControls {
     this.dragId = null;
   }
 
+  // 編集対象ボタンを選ぶ（強調表示し、大きさスライダーを同期）
+  private selectKey(key: string): void {
+    this.selectedKey = key;
+    this.joyBase.classList.toggle("selected", key === "move");
+    for (const def of ACTIONS) {
+      this.btnMap[def.key].classList.toggle("selected", def.key === key);
+    }
+    this.refreshSizeEditor();
+  }
+
+  // 選択を解除（強調を消し、大きさスライダーを無効化）
+  private clearSelection(): void {
+    this.selectedKey = null;
+    this.joyBase.classList.remove("selected");
+    for (const def of ACTIONS) {
+      this.btnMap[def.key].classList.remove("selected");
+    }
+    this.refreshSizeEditor();
+  }
+
+  // 選択中ボタンに合わせて、編集画面の大きさスライダーの値・見出し・有効状態を更新
+  private refreshSizeEditor(): void {
+    const key = this.selectedKey;
+    if (!key) {
+      this.editSizeLabel.textContent = "大きさ（ボタンを選択）";
+      this.editSizeSlider.disabled = true;
+      this.editSizeSlider.value = "100";
+      return;
+    }
+    this.editSizeSlider.disabled = false;
+    const scale = this.layout.scales[key] ?? 1;
+    this.editSizeSlider.value = String(Math.round(scale * 100));
+    this.editSizeLabel.textContent = `「${DISPLAY_NAMES[key] ?? key}」の大きさ`;
+  }
+
   // ---- モード切替（表示の出し分け） ----
   private setMode(mode: Mode): void {
     this.mode = mode;
@@ -511,6 +611,13 @@ export class TouchControls {
       this.joyKnob.style.transform = "translate(-50%, -50%)";
       this.input.setTouchMove(0, 0);
       this.clearSprint();
+    }
+    // 編集画面を離れるときは選択を解除する
+    if (mode !== "edit") {
+      this.clearSelection();
+    } else {
+      // 編集画面に入った時点ではどのボタンも未選択
+      this.refreshSizeEditor();
     }
     const playing = mode === "play";
     const editing = mode === "edit";
@@ -535,13 +642,21 @@ export class TouchControls {
 
   // ---- レイアウト適用 ----
   private applyLayout(): void {
-    this.root.style.setProperty("--tc-size", `${this.layout.size}px`);
     this.root.style.setProperty("--tc-opacity", String(this.layout.opacity));
+
+    // 移動スティック（位置と大きさ）。子のノブは親の --tc-size を継承する。
+    this.joyBase.style.setProperty("--tc-size", `${this.realSize("move")}px`);
     this.placeEl(this.joyBase, this.layout.pos.move ?? DEFAULT_LAYOUT.pos.move);
+
+    // 各アクションボタン（位置と大きさを要素ごとに設定）
     for (const def of ACTIONS) {
       const p = this.layout.pos[def.key] ?? DEFAULT_LAYOUT.pos[def.key];
-      this.placeEl(this.btnMap[def.key], p);
+      const btn = this.btnMap[def.key];
+      btn.style.setProperty("--tc-size", `${this.realSize(def.key)}px`);
+      this.placeEl(btn, p);
     }
+
+    // 設定画面のスライダー値を現在のレイアウトに同期
     this.sizeSlider.value = String(this.layout.size);
     this.opacitySlider.value = String(Math.round(this.layout.opacity * 100));
   }
@@ -557,12 +672,22 @@ export class TouchControls {
       size: DEFAULT_LAYOUT.size,
       opacity: DEFAULT_LAYOUT.opacity,
       pos: { ...DEFAULT_LAYOUT.pos },
+      scales: { ...DEFAULT_LAYOUT.scales },
     };
     if (!parsed) return base;
     if (typeof parsed.size === "number") base.size = clamp(parsed.size, 44, 120);
     if (typeof parsed.opacity === "number") base.opacity = clamp(parsed.opacity, 0.2, 1);
     if (parsed.pos && typeof parsed.pos === "object") {
       base.pos = { ...DEFAULT_LAYOUT.pos, ...parsed.pos };
+    }
+    // 各ボタンの大きさ倍率（旧データには無いので、その場合は全て既定1.0扱い）
+    if (parsed.scales && typeof parsed.scales === "object") {
+      const s: Record<string, number> = {};
+      for (const k of Object.keys(parsed.scales)) {
+        const v = (parsed.scales as Record<string, number>)[k];
+        if (typeof v === "number") s[k] = clamp(v, SCALE_MIN, SCALE_MAX);
+      }
+      base.scales = { ...DEFAULT_LAYOUT.scales, ...s };
     }
     return base;
   }
@@ -603,6 +728,8 @@ export class TouchControls {
       }
       this.layout = this.sanitize(JSON.parse(raw) as Partial<Layout>);
       this.applyLayout();
+      // 読み込んだ内容を選択中ボタンの大きさスライダーにも反映
+      this.refreshSizeEditor();
       this.saveLast();
       this.flashButton(btn, "読込済み", "読込");
     } catch {
@@ -697,6 +824,13 @@ export class TouchControls {
         border-style: dashed;
         cursor: move;
       }
+      /* 編集中に「大きさ調整の対象」として選ばれているボタンの強調 */
+      #touch-root .tc-controls.editing .tc-btn.selected,
+      #touch-root .tc-controls.editing .tc-joy.selected {
+        border-style: solid;
+        border-color: #ffd27a;
+        box-shadow: 0 0 0 3px rgba(255, 210, 122, 0.55);
+      }
       #touch-root .tc-pause-btn {
         position: absolute;
         left: 14px;
@@ -773,7 +907,7 @@ export class TouchControls {
       #touch-root .tc-row-label {
         color: #ffe6b0;
         font-size: 14px;
-        width: 96px;
+        width: 130px;
         flex: none;
       }
       #touch-root .tc-slider {
@@ -800,23 +934,34 @@ export class TouchControls {
         padding: 8px;
         border-radius: 8px;
       }
+      /* 配置編集パネル（画面上部に縦並び。プレイUIは下に見えたまま） */
       #touch-root .tc-edit-banner {
         position: absolute;
         left: 50%;
-        top: 14px;
+        top: 12px;
         transform: translateX(-50%);
         z-index: 11;
         display: none;
-        align-items: center;
-        gap: 12px;
-        background: rgba(15, 15, 20, 0.85);
+        flex-direction: column;
+        gap: 10px;
+        width: min(94vw, 460px);
+        max-height: 80vh;
+        overflow-y: auto;
+        background: rgba(15, 15, 20, 0.9);
         border: 1px solid rgba(255, 200, 80, 0.6);
-        border-radius: 10px;
-        padding: 8px 12px;
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      #touch-root .tc-edit-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
       #touch-root .tc-edit-text {
         color: #ffe6b0;
-        font-size: 14px;
+        font-size: 13px;
+        line-height: 1.4;
       }
       #touch-root .tc-edit-done {
         appearance: none;
@@ -827,6 +972,7 @@ export class TouchControls {
         font-size: 14px;
         padding: 8px 16px;
         border-radius: 8px;
+        flex: none;
       }
     `;
     document.head.appendChild(style);

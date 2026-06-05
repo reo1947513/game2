@@ -127,7 +127,10 @@ export class TargetRush implements GameMode {
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
     // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
+    if (ctx.frameInput?.kickPressed) {
+      ctx.kickView?.trigger();
+      ctx.weapons.triggerKickDip();
+    }
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -204,7 +207,10 @@ export class MovingRange implements GameMode {
     if (this.finished) return;
 
     // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
+    if (ctx.frameInput?.kickPressed) {
+      ctx.kickView?.trigger();
+      ctx.weapons.triggerKickDip();
+    }
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -328,7 +334,10 @@ export class Parkour implements GameMode {
     ctx.player.getEyePosition(this.eye);
 
     // 蹴り：脚の振り演出を出す（このモードに弾く敵はいない）
-    if (ctx.frameInput?.kickPressed) ctx.kickView?.trigger();
+    if (ctx.frameInput?.kickPressed) {
+      ctx.kickView?.trigger();
+      ctx.weapons.triggerKickDip();
+    }
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -682,6 +691,7 @@ export class WaveSurvival implements GameMode {
     if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
       this.nextKickTime = now + 0.8;
       if (ctx.kickView) ctx.kickView.trigger();
+      ctx.weapons.triggerKickDip();
       this.doKick();
     }
 
@@ -698,11 +708,13 @@ export class WaveSurvival implements GameMode {
 
       // ノックバック中はAIを止めて、後方へ滑らかに吹き飛ばす
       if (e.knockback > 0) {
+        // 残り時間に応じて速度を落とし、勢いよく飛んで減速して止まる
+        const kbSpeed = 18 * (e.knockback / 0.3);
         e.knockback -= dt;
         e.unit.moveToward(
           e.unit.group.position.x + e.kbx,
           e.unit.group.position.z + e.kbz,
-          16,
+          kbSpeed,
           dt,
           ctx.stage.colliders
         );
@@ -973,6 +985,7 @@ export class BotDeathmatch implements GameMode {
     if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
       this.nextKickTime = now + 0.8;
       if (ctx.kickView) ctx.kickView.trigger();
+      ctx.weapons.triggerKickDip();
       this.doKick();
     }
 

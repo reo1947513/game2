@@ -46,6 +46,9 @@ export class WeaponSystem {
   // リロード動作の進み具合（0=通常、1=最も大きく動いた瞬間）。見た目だけに使います。
   private reloadAnim = 0;
 
+  // 蹴り時に武器を一瞬下げる量（0〜1）
+  private kickDip = 0;
+
   private raycaster = new THREE.Raycaster();
   private shootables: THREE.Object3D[] = [];
 
@@ -106,6 +109,11 @@ export class WeaponSystem {
   // 蹴りが敵に当たったとき命中マーカーを点滅させる（脚の演出は KickView 側が担当）。
   kick(hit: boolean): void {
     if (hit) this.hud.flashHitmarker();
+  }
+
+  // 蹴りに合わせて武器を一瞬下げる。蹴り発動時に呼ぶ。
+  triggerKickDip(): void {
+    this.kickDip = 1;
   }
 
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
@@ -372,6 +380,8 @@ export class WeaponSystem {
     // 発砲拡散と見た目反動を時間で戻す
     this.fireBloom = Math.max(0, this.fireBloom - dt * 0.6);
     this.recoilOffset = Math.max(0, this.recoilOffset - dt * 1.2);
+    // 蹴りで下げた武器を戻す（約0.3秒で戻る）
+    this.kickDip = Math.max(0, this.kickDip - dt * 3.2);
     this.prevFiring = input.firing;
   }
 
@@ -551,6 +561,10 @@ export class WeaponSystem {
     pos.y -= r * 0.14;
     pos.z += r * 0.06;
     pos.x += r * 0.02;
+
+    // 蹴り動作：武器を一瞬下げて手前へ引く
+    pos.y -= this.kickDip * 0.22;
+    pos.z += this.kickDip * 0.12;
 
     w.model.position.copy(pos);
 

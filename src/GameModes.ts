@@ -756,7 +756,7 @@ export class BotDeathmatch implements GameMode {
   private readonly DURATION = 120; // 制限時間（秒）
   private readonly BOT_HP = 60;
   private readonly BOT_SPEED = 2.2;
-  private readonly BOT_RANGE = 3; // この距離以下になったら射撃する
+  private readonly BOT_RANGE = 1; // この距離以下になったら射撃する
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;

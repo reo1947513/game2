@@ -123,6 +123,8 @@ export class TargetRush implements GameMode {
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
+    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -197,6 +199,9 @@ export class MovingRange implements GameMode {
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
+
+    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -318,6 +323,9 @@ export class Parkour implements GameMode {
   update(ctx: GameContext, dt: number, now: number): void {
     if (this.finished) return;
     ctx.player.getEyePosition(this.eye);
+
+    // 蹴り：足モーションを出す（このモードに弾く敵はいない）
+    if (ctx.frameInput?.kickPressed) ctx.weapons.kick(false);
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -835,6 +843,7 @@ export class BotDeathmatch implements GameMode {
   private alive = false;
   private playerDead = false;
   private playerRespawnAt = 0;
+  private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
   private eye = new THREE.Vector3();
 
   // 壁越し射撃を防ぐ視線判定の作業用
@@ -858,6 +867,7 @@ export class BotDeathmatch implements GameMode {
     this.alive = true;
     this.playerDead = false;
     this.playerRespawnAt = 0;
+    this.nextKickTime = now;
     this.endTime = now + this.DURATION;
 
     ctx.health.reset(100);
@@ -940,6 +950,12 @@ export class BotDeathmatch implements GameMode {
 
     ctx.player.getEyePosition(this.eye);
 
+    // 蹴り：クールダウンが明けていて入力があれば、周囲の近いボットを弾く
+    if (ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
+      this.nextKickTime = now + 0.8;
+      this.doKick();
+    }
+
     for (const b of this.bots) {
       const dx = this.eye.x - b.unit.group.position.x;
       const dz = this.eye.z - b.unit.group.position.z;
@@ -1017,6 +1033,34 @@ export class BotDeathmatch implements GameMode {
       }
     }
     return true;
+  }
+
+  // 蹴り：周囲2.5m以内のボットを外向きに弾き、ダメージを与える。足モーションも出す。
+  private doKick(): void {
+    if (!this.ctx) return;
+    const now = performance.now() / 1000;
+    let hitAny = false;
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      const b = this.bots[i];
+      const dx = b.unit.group.position.x - this.eye.x;
+      const dz = b.unit.group.position.z - this.eye.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.5) continue;
+      const nx = d > 0.001 ? dx / d : 0;
+      const nz = d > 0.001 ? dz / d : 1;
+      b.unit.group.position.x = Math.max(
+        -29,
+        Math.min(29, b.unit.group.position.x + nx * 4)
+      );
+      b.unit.group.position.z = Math.max(
+        -29,
+        Math.min(29, b.unit.group.position.z + nz * 4)
+      );
+      b.hp -= 40;
+      hitAny = true;
+      if (b.hp <= 0) this.killBot(b, now);
+    }
+    this.ctx.weapons.kick(hitAny);
   }
 
   private finishMatch(ctx: GameContext): void {

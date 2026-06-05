@@ -662,7 +662,7 @@ export class WaveSurvival implements GameMode {
         -29,
         Math.min(29, e.unit.group.position.z + nz * 4)
       );
-      e.hp -= 40;
+      e.hp -= 20;
       hitAny = true;
       if (e.hp <= 0) this.removeEnemy(e, true);
     }
@@ -1056,7 +1056,7 @@ export class BotDeathmatch implements GameMode {
         -29,
         Math.min(29, b.unit.group.position.z + nz * 4)
       );
-      b.hp -= 40;
+      b.hp -= 20;
       hitAny = true;
       if (b.hp <= 0) this.killBot(b, now);
     }

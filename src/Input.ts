@@ -18,6 +18,8 @@ export class Input {
   private reloadQueued = false;
   private switchQueued: WeaponKind | null = null;
   private kickQueued = false;
+  private grenadeHeldDown = false;
+  private grenadeReleasedQueued = false;
 
   private locked = false;
 
@@ -68,6 +70,7 @@ export class Input {
       if (code === "Digit3") this.switchQueued = WeaponKind.Shotgun;
       if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
       if (code === "KeyV") this.kickQueued = true;
+      if (code === "KeyG") this.grenadeHeldDown = true;
     }
     this.keys.add(code);
     // ブラウザ既定動作（スクロール等）を抑止
@@ -80,6 +83,11 @@ export class Input {
 
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
+    // 手榴弾はボタンを離した瞬間に投げる
+    if (e.code === "KeyG") {
+      this.grenadeHeldDown = false;
+      this.grenadeReleasedQueued = true;
+    }
   };
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -167,6 +175,11 @@ export class Input {
   queueKick(): void {
     this.kickQueued = true;
   }
+  // 手榴弾ボタンの押下状態を渡す。離した（true→false）瞬間に投擲を予約する。
+  setGrenadeHeld(held: boolean): void {
+    if (this.grenadeHeldDown && !held) this.grenadeReleasedQueued = true;
+    this.grenadeHeldDown = held;
+  }
 
   // 毎フレーム呼ぶ。現在の入力をまとめて返す。
   sample(): InputState {
@@ -195,6 +208,8 @@ export class Input {
       reloadPressed: this.reloadQueued,
       switchTo: this.switchQueued,
       kickPressed: this.kickQueued,
+      grenadeHeld: this.grenadeHeldDown,
+      grenadeReleased: this.grenadeReleasedQueued,
       yaw: this.yaw,
       pitch: this.pitch,
     };
@@ -205,6 +220,7 @@ export class Input {
     this.reloadQueued = false;
     this.switchQueued = null;
     this.kickQueued = false;
+    this.grenadeReleasedQueued = false;
 
     return state;
   }

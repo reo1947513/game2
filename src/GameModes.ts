@@ -8,6 +8,7 @@ import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
 import { InputState } from "./types";
 import { KickView } from "./KickView";
+import { GrenadeSystem } from "./GrenadeSystem";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -23,6 +24,8 @@ export interface GameContext {
   frameInput?: InputState;
   // 一人称の蹴りモーション。蹴り発動時に trigger() を呼ぶ。
   kickView?: KickView;
+  // 手榴弾の管理。敵のいるモードで setEnabled(true) と onExplode を設定して使う。
+  grenadeSystem?: GrenadeSystem;
 }
 
 // 1つの遊び方（モード）の共通の形です。
@@ -514,6 +517,14 @@ export class WaveSurvival implements GameMode {
     ctx.weapons.enemyHitHook = (obj: THREE.Object3D, damage: number) =>
       this.onEnemyShot(obj, damage);
 
+    // 手榴弾を有効化し、爆発時の範囲ダメージを登録する
+    if (ctx.grenadeSystem) {
+      ctx.grenadeSystem.setEnabled(true);
+      ctx.grenadeSystem.setAmmo(3);
+      ctx.grenadeSystem.onExplode = (x, _y, z, r) =>
+        this.onGrenadeExplode(x, z, r);
+    }
+
     this.startWave();
   }
 
@@ -664,6 +675,21 @@ export class WaveSurvival implements GameMode {
     }
     // 足のモーションを出す。敵に当たっていれば命中マーカーも点滅させる。
     this.ctx.weapons.kick(hitAny);
+  }
+
+  // 手榴弾の爆発：中心から半径内の敵に、近いほど大きいダメージを与える。
+  private onGrenadeExplode(x: number, z: number, radius: number): void {
+    if (!this.ctx) return;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = e.unit.group.position.x - x;
+      const dz = e.unit.group.position.z - z;
+      const dd = Math.hypot(dx, dz);
+      if (dd > radius) continue;
+      const dmg = 130 * (1 - dd / radius);
+      e.hp -= dmg;
+      if (e.hp <= 0) this.removeEnemy(e, true);
+    }
   }
 
   update(ctx: GameContext, dt: number, now: number): void {
@@ -833,6 +859,12 @@ export class WaveSurvival implements GameMode {
     for (const pk of this.pickups) pk.dispose(ctx.scene);
     this.pickups = [];
     ctx.weapons.enemyHitHook = null;
+    // 手榴弾を無効化して片付ける
+    if (ctx.grenadeSystem) {
+      ctx.grenadeSystem.setEnabled(false);
+      ctx.grenadeSystem.onExplode = null;
+      ctx.grenadeSystem.clear();
+    }
     ctx.health.hide();
     ctx.ui.showHud(false);
     this.ctx = null;
@@ -901,6 +933,14 @@ export class BotDeathmatch implements GameMode {
 
     ctx.weapons.enemyHitHook = (obj: THREE.Object3D, damage: number) =>
       this.onBotShot(obj, damage);
+
+    // 手榴弾を有効化し、爆発時の範囲ダメージを登録する
+    if (ctx.grenadeSystem) {
+      ctx.grenadeSystem.setEnabled(true);
+      ctx.grenadeSystem.setAmmo(3);
+      ctx.grenadeSystem.onExplode = (x, _y, z, r) =>
+        this.onGrenadeExplode(x, z, r);
+    }
 
     for (let i = 0; i < this.BOT_COUNT; i++) this.spawnBot(now);
     this.updateHud(now);
@@ -1098,6 +1138,22 @@ export class BotDeathmatch implements GameMode {
     this.ctx.weapons.kick(hitAny);
   }
 
+  // 手榴弾の爆発：中心から半径内のボットに、近いほど大きいダメージを与える。
+  private onGrenadeExplode(x: number, z: number, radius: number): void {
+    if (!this.ctx) return;
+    const now = performance.now() / 1000;
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      const b = this.bots[i];
+      const dx = b.unit.group.position.x - x;
+      const dz = b.unit.group.position.z - z;
+      const dd = Math.hypot(dx, dz);
+      if (dd > radius) continue;
+      const dmg = 130 * (1 - dd / radius);
+      b.hp -= dmg;
+      if (b.hp <= 0) this.killBot(b, now);
+    }
+  }
+
   private finishMatch(ctx: GameContext): void {
     this.alive = false;
     ctx.finish([
@@ -1119,6 +1175,12 @@ export class BotDeathmatch implements GameMode {
     this.bots = [];
     this.respawnQueue = [];
     ctx.weapons.enemyHitHook = null;
+    // 手榴弾を無効化して片付ける
+    if (ctx.grenadeSystem) {
+      ctx.grenadeSystem.setEnabled(false);
+      ctx.grenadeSystem.onExplode = null;
+      ctx.grenadeSystem.clear();
+    }
     ctx.health.hide();
     ctx.ui.showHud(false);
     this.ctx = null;

@@ -31,6 +31,8 @@ export interface InputState {
   reloadPressed: boolean;
   switchTo: WeaponKind | null; // 数字キーで武器切替
   kickPressed: boolean; // 蹴り（押した瞬間）
+  grenadeHeld: boolean; // 手榴弾ボタン保持（長押しで軌道表示）
+  grenadeReleased: boolean; // 手榴弾ボタンを離した瞬間（投擲）
   // 視点（マウス移動の累積から計算した向き）
   yaw: number;
   pitch: number;

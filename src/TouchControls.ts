@@ -61,6 +61,9 @@ const ACTIONS: ActionDef[] = [
   { key: "prone", label: "伏せ", type: "tap" },
   // 武器切替トグル（タップでアサルト⇔スナイパー）。ラベルは現在の武器名を表示。
   { key: "weapon", label: "ASSAULT", type: "tap" },
+  // 蹴り（タップ）と手榴弾（長押しで軌道表示、離すと投擲）
+  { key: "kick", label: "蹴り", type: "tap" },
+  { key: "grenade", label: "手榴弾", type: "hold" },
 ];
 
 // サイズ編集の見出しに使う、要素ごとの表示名
@@ -73,6 +76,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   crouch: "しゃがむ",
   prone: "伏せ",
   weapon: "武器",
+  kick: "蹴り",
+  grenade: "手榴弾",
 };
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
@@ -88,6 +93,8 @@ const DEFAULT_LAYOUT: Layout = {
     crouch: { x: 80, y: 86 },
     prone: { x: 55, y: 84 },
     weapon: { x: 50, y: 10 },
+    kick: { x: 88, y: 36 },
+    grenade: { x: 73, y: 28 },
   },
   scales: {},
 };
@@ -497,7 +504,8 @@ export class TouchControls {
         } else {
           b.setPointerCapture(e.pointerId);
           this.holdId[def.key] = e.pointerId;
-          this.input.setTouchHold(def.key as HoldKey, true);
+          if (def.key === "grenade") this.input.setGrenadeHeld(true);
+          else this.input.setTouchHold(def.key as HoldKey, true);
           b.classList.add("active");
         }
       });
@@ -508,7 +516,8 @@ export class TouchControls {
         }
         if (def.type === "hold" && this.holdId[def.key] === e.pointerId) {
           this.holdId[def.key] = null;
-          this.input.setTouchHold(def.key as HoldKey, false);
+          if (def.key === "grenade") this.input.setGrenadeHeld(false);
+          else this.input.setTouchHold(def.key as HoldKey, false);
           b.classList.remove("active");
         }
       };
@@ -533,6 +542,9 @@ export class TouchControls {
         break;
       case "weapon":
         this.toggleWeapon();
+        break;
+      case "kick":
+        this.input.queueKick();
         break;
     }
   }

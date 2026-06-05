@@ -4,6 +4,7 @@ import { WeaponSystem } from "./WeaponSystem";
 import { ModeUI } from "./ModeUI";
 import { PlayerController } from "./PlayerController";
 import { Health } from "./Health";
+import { EnemyUnit } from "./Enemy";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -372,7 +373,7 @@ export class WaveSurvival implements GameMode {
   description = "四方から迫る敵を撃ち、波をしのいで生き延びる。被弾で体力が減る。";
 
   private ctx: GameContext | null = null;
-  private enemies: { mesh: THREE.Mesh; hp: number; speed: number }[] = [];
+  private enemies: { unit: EnemyUnit; hp: number; speed: number }[] = [];
   private wave = 0;
   private kills = 0;
   private alive = false;
@@ -411,30 +412,22 @@ export class WaveSurvival implements GameMode {
       const x = this.eye.x + Math.cos(angle) * dist;
       const z = this.eye.z + Math.sin(angle) * dist;
 
-      const geo = new THREE.BoxGeometry(1.2, 2, 1.2);
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0xd23b2a,
-        emissive: 0x3a0a05,
-        roughness: 0.6,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
+      const unit = new EnemyUnit();
       // ステージの外へ出ないよう、おおまかに範囲内へ収める
-      mesh.position.set(
+      unit.setGround(
         Math.max(-28, Math.min(28, x)),
-        1,
         Math.max(-28, Math.min(28, z))
       );
-      mesh.castShadow = true;
-      this.ctx.scene.add(mesh);
-      this.ctx.weapons.enemyTargets.push(mesh);
-      this.enemies.push({ mesh, hp: 1, speed });
+      this.ctx.scene.add(unit.group);
+      this.ctx.weapons.enemyTargets.push(unit.hitbox);
+      this.enemies.push({ unit, hp: 1, speed });
     }
     this.updateHud();
   }
 
   // 弾が敵に当たったとき
   private onEnemyShot(obj: THREE.Object3D): void {
-    const e = this.enemies.find((x) => x.mesh === obj);
+    const e = this.enemies.find((x) => x.unit.hitbox === obj);
     if (!e) return;
     e.hp--;
     if (e.hp <= 0) this.removeEnemy(e, true);
@@ -442,14 +435,13 @@ export class WaveSurvival implements GameMode {
 
   // 敵を1体取り除く。killed=true なら撃破数を増やす。
   private removeEnemy(
-    e: { mesh: THREE.Mesh; hp: number; speed: number },
+    e: { unit: EnemyUnit; hp: number; speed: number },
     killed: boolean
   ): void {
     if (!this.ctx) return;
-    this.ctx.scene.remove(e.mesh);
-    e.mesh.geometry.dispose();
-    (e.mesh.material as THREE.Material).dispose();
-    const ti = this.ctx.weapons.enemyTargets.indexOf(e.mesh);
+    this.ctx.scene.remove(e.unit.group);
+    e.unit.dispose();
+    const ti = this.ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
     if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
     const ei = this.enemies.indexOf(e);
     if (ei >= 0) this.enemies.splice(ei, 1);
@@ -465,16 +457,25 @@ export class WaveSurvival implements GameMode {
 
     let contacting = false;
     for (const e of this.enemies) {
-      const dx = this.eye.x - e.mesh.position.x;
-      const dz = this.eye.z - e.mesh.position.z;
+      const ex = e.unit.group.position.x;
+      const ez = e.unit.group.position.z;
+      const dx = this.eye.x - ex;
+      const dz = this.eye.z - ez;
       const d = Math.hypot(dx, dz);
-      if (d > 0.001) {
-        e.mesh.position.x += (dx / d) * e.speed * dt;
-        e.mesh.position.z += (dz / d) * e.speed * dt;
+      e.unit.faceTo(dx, dz);
+
+      if (d > 1.8) {
+        // 間合いの外：歩いて近づく
+        if (d > 0.001) {
+          e.unit.group.position.x += (dx / d) * e.speed * dt;
+          e.unit.group.position.z += (dz / d) * e.speed * dt;
+        }
+        e.unit.update(dt, "walk");
+      } else {
+        // 間合いの内：止まって攻撃モーション
+        e.unit.update(dt, "attack");
+        contacting = true;
       }
-      // 敵がこちらを向くように少し回す
-      e.mesh.rotation.y = Math.atan2(dx, dz);
-      if (d < 1.6) contacting = true;
     }
 
     // 接触している敵がいれば、一定間隔で体力を減らす
@@ -516,10 +517,9 @@ export class WaveSurvival implements GameMode {
   exit(ctx: GameContext): void {
     // 敵をすべて撤去し、射撃側の登録も元へ戻す
     for (const e of this.enemies) {
-      ctx.scene.remove(e.mesh);
-      e.mesh.geometry.dispose();
-      (e.mesh.material as THREE.Material).dispose();
-      const ti = ctx.weapons.enemyTargets.indexOf(e.mesh);
+      ctx.scene.remove(e.unit.group);
+      e.unit.dispose();
+      const ti = ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
       if (ti >= 0) ctx.weapons.enemyTargets.splice(ti, 1);
     }
     this.enemies = [];

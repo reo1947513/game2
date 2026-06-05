@@ -420,7 +420,7 @@ const WAVE_STANDARD: WaveEnemyType = {
   bodyColor: 0x23262e,
   accentColor: 0xff6a00,
   speedMul: 1,
-  hp: 40,
+  hp: 100,
   behavior: "melee",
   shielded: false,
 };
@@ -430,7 +430,7 @@ const WAVE_RUSHER: WaveEnemyType = {
   bodyColor: 0x3a1530,
   accentColor: 0xff2a6a,
   speedMul: 1.7,
-  hp: 20,
+  hp: 50,
   behavior: "melee",
   shielded: false,
 };
@@ -440,7 +440,7 @@ const WAVE_TANK: WaveEnemyType = {
   bodyColor: 0x1a1d22,
   accentColor: 0x36c0ff,
   speedMul: 0.55,
-  hp: 120,
+  hp: 300,
   behavior: "melee",
   shielded: false,
 };
@@ -450,7 +450,7 @@ const WAVE_SHOOTER: WaveEnemyType = {
   bodyColor: 0x2a1d3a,
   accentColor: 0xb070ff,
   speedMul: 0.9,
-  hp: 40,
+  hp: 100,
   behavior: "ranged",
   shielded: false,
 };
@@ -460,7 +460,7 @@ const WAVE_BOMBER: WaveEnemyType = {
   bodyColor: 0x2e2a12,
   accentColor: 0xffd23a,
   speedMul: 1.5,
-  hp: 20,
+  hp: 50,
   behavior: "bomber",
   shielded: false,
 };
@@ -470,7 +470,7 @@ const WAVE_SHIELD: WaveEnemyType = {
   bodyColor: 0x20242a,
   accentColor: 0xc9d24a,
   speedMul: 0.7,
-  hp: 50,
+  hp: 125,
   behavior: "melee",
   shielded: true,
 };
@@ -480,7 +480,7 @@ const WAVE_DRONE: WaveEnemyType = {
   bodyColor: 0x12303a,
   accentColor: 0x3affe0,
   speedMul: 1.1,
-  hp: 30,
+  hp: 75,
   behavior: "ranged",
   shielded: false,
   flying: true,
@@ -491,7 +491,7 @@ const WAVE_BOSS: WaveEnemyType = {
   bodyColor: 0x2a0d0d,
   accentColor: 0xffcf3a,
   speedMul: 0.5,
-  hp: 600,
+  hp: 1500,
   behavior: "boss",
   shielded: false,
 };
@@ -885,7 +885,7 @@ export class BotDeathmatch implements GameMode {
 
   private readonly BOT_COUNT = 3;
   private readonly DURATION = 120; // 制限時間（秒）
-  private readonly BOT_HP = 60;
+  private readonly BOT_HP = 100;
   private readonly BOT_SPEED = 2.2;
   private readonly BOT_RANGE = 1; // この距離以下になったら射撃する
 

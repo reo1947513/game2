@@ -3,6 +3,7 @@ import { Stage, Target } from "./Stage";
 import { WeaponSystem } from "./WeaponSystem";
 import { ModeUI } from "./ModeUI";
 import { PlayerController } from "./PlayerController";
+import { Health } from "./Health";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -11,6 +12,7 @@ export interface GameContext {
   weapons: WeaponSystem;
   ui: ModeUI;
   player: PlayerController;
+  health: Health;
   // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
   finish: (lines: string[]) => void;
 }
@@ -358,5 +360,172 @@ export class Parkour implements GameMode {
     this.platforms = [];
     this.points = [];
     ctx.ui.showHud(false);
+  }
+}
+
+// ===== モード4：ウェーブ・サバイバル =====
+// 四方から迫る敵を撃って倒し、波をしのいで生き延びる。
+// 敵に触れられると体力が減り、0になると終了。波が進むほど数と速さが増す。
+export class WaveSurvival implements GameMode {
+  id = "wave";
+  label = "ウェーブ・サバイバル";
+  description = "四方から迫る敵を撃ち、波をしのいで生き延びる。被弾で体力が減る。";
+
+  private ctx: GameContext | null = null;
+  private enemies: { mesh: THREE.Mesh; hp: number; speed: number }[] = [];
+  private wave = 0;
+  private kills = 0;
+  private alive = false;
+  private eye = new THREE.Vector3();
+  private nextContactTime = 0; // 接触ダメージの間隔管理（秒）
+
+  enter(ctx: GameContext, now: number): void {
+    this.ctx = ctx;
+    this.enemies = [];
+    this.wave = 0;
+    this.kills = 0;
+    this.alive = true;
+    this.nextContactTime = now;
+
+    ctx.health.reset(100);
+    ctx.health.show();
+    ctx.ui.showHud(true);
+
+    // 射撃が敵に当たったときの処理を登録する
+    ctx.weapons.enemyHitHook = (obj: THREE.Object3D) => this.onEnemyShot(obj);
+
+    this.startWave();
+  }
+
+  // 次の波を出す。波が進むほど数も速さも増える。
+  private startWave(): void {
+    if (!this.ctx) return;
+    this.wave++;
+    const count = 2 + this.wave;
+    const speed = 1.6 + this.wave * 0.25;
+
+    this.ctx.player.getEyePosition(this.eye);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 18 + Math.random() * 4;
+      const x = this.eye.x + Math.cos(angle) * dist;
+      const z = this.eye.z + Math.sin(angle) * dist;
+
+      const geo = new THREE.BoxGeometry(1.2, 2, 1.2);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xd23b2a,
+        emissive: 0x3a0a05,
+        roughness: 0.6,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      // ステージの外へ出ないよう、おおまかに範囲内へ収める
+      mesh.position.set(
+        Math.max(-28, Math.min(28, x)),
+        1,
+        Math.max(-28, Math.min(28, z))
+      );
+      mesh.castShadow = true;
+      this.ctx.scene.add(mesh);
+      this.ctx.weapons.enemyTargets.push(mesh);
+      this.enemies.push({ mesh, hp: 1, speed });
+    }
+    this.updateHud();
+  }
+
+  // 弾が敵に当たったとき
+  private onEnemyShot(obj: THREE.Object3D): void {
+    const e = this.enemies.find((x) => x.mesh === obj);
+    if (!e) return;
+    e.hp--;
+    if (e.hp <= 0) this.removeEnemy(e, true);
+  }
+
+  // 敵を1体取り除く。killed=true なら撃破数を増やす。
+  private removeEnemy(
+    e: { mesh: THREE.Mesh; hp: number; speed: number },
+    killed: boolean
+  ): void {
+    if (!this.ctx) return;
+    this.ctx.scene.remove(e.mesh);
+    e.mesh.geometry.dispose();
+    (e.mesh.material as THREE.Material).dispose();
+    const ti = this.ctx.weapons.enemyTargets.indexOf(e.mesh);
+    if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+    const ei = this.enemies.indexOf(e);
+    if (ei >= 0) this.enemies.splice(ei, 1);
+    if (killed) {
+      this.kills++;
+      this.updateHud();
+    }
+  }
+
+  update(ctx: GameContext, dt: number, now: number): void {
+    if (!this.alive) return;
+    ctx.player.getEyePosition(this.eye);
+
+    let contacting = false;
+    for (const e of this.enemies) {
+      const dx = this.eye.x - e.mesh.position.x;
+      const dz = this.eye.z - e.mesh.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.001) {
+        e.mesh.position.x += (dx / d) * e.speed * dt;
+        e.mesh.position.z += (dz / d) * e.speed * dt;
+      }
+      // 敵がこちらを向くように少し回す
+      e.mesh.rotation.y = Math.atan2(dx, dz);
+      if (d < 1.6) contacting = true;
+    }
+
+    // 接触している敵がいれば、一定間隔で体力を減らす
+    if (contacting && now >= this.nextContactTime) {
+      ctx.health.damage(12);
+      this.nextContactTime = now + 0.8;
+      if (ctx.health.isDead()) {
+        this.gameOver(ctx);
+        return;
+      }
+    }
+
+    // 敵を全部倒したら次の波へ
+    if (this.enemies.length === 0) {
+      this.startWave();
+    }
+
+    this.updateHud();
+  }
+
+  private updateHud(): void {
+    if (!this.ctx) return;
+    this.ctx.ui.setHud([
+      `ウェーブ ${this.wave}`,
+      `撃破 ${this.kills}`,
+      `残り ${this.enemies.length}`,
+    ]);
+  }
+
+  private gameOver(ctx: GameContext): void {
+    this.alive = false;
+    ctx.finish([
+      "ウェーブ・サバイバル 結果",
+      `到達ウェーブ ${this.wave}`,
+      `撃破数 ${this.kills}`,
+    ]);
+  }
+
+  exit(ctx: GameContext): void {
+    // 敵をすべて撤去し、射撃側の登録も元へ戻す
+    for (const e of this.enemies) {
+      ctx.scene.remove(e.mesh);
+      e.mesh.geometry.dispose();
+      (e.mesh.material as THREE.Material).dispose();
+      const ti = ctx.weapons.enemyTargets.indexOf(e.mesh);
+      if (ti >= 0) ctx.weapons.enemyTargets.splice(ti, 1);
+    }
+    this.enemies = [];
+    ctx.weapons.enemyHitHook = null;
+    ctx.health.hide();
+    ctx.ui.showHud(false);
+    this.ctx = null;
   }
 }

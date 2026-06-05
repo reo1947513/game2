@@ -51,6 +51,11 @@ export class WeaponSystem {
   // 発砲のたびに1回呼ばれる（命中率の計算などに使う）。
   shotFiredHook: (() => void) | null = null;
 
+  // モードが登録する「動く敵」のメッシュ。射撃の対象に加わる。
+  enemyTargets: THREE.Object3D[] = [];
+  // 動く敵に当たったとき呼ばれる。モードが撃破などを処理する。
+  enemyHitHook: ((obj: THREE.Object3D) => void) | null = null;
+
   constructor(
     private camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
@@ -314,29 +319,39 @@ export class WeaponSystem {
     const origin = new THREE.Vector3();
     this.camera.getWorldPosition(origin);
     this.raycaster.set(origin, dir);
-    const hits = this.raycaster.intersectObjects(this.shootables, false);
+    const objs =
+      this.enemyTargets.length > 0
+        ? this.shootables.concat(this.enemyTargets)
+        : this.shootables;
+    const hits = this.raycaster.intersectObjects(objs, false);
     if (hits.length > 0) {
       const obj = hits[0].object;
-      const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
-      if (target) {
+      // まず「動く敵」かどうかを見る。敵ならモードに処理を任せる。
+      if (this.enemyTargets.indexOf(obj) >= 0) {
         this.hud.flashHitmarker();
-        // モードのフックがあればそちらに任せる。処理されなければ通常動作。
-        let handled = false;
-        if (this.targetHitHook) {
-          handled = this.targetHitHook(target, performance.now() / 1000);
-        }
-        if (!handled) {
-          // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
-          if (w.spec.damage >= 50) {
-            this.stage.onTargetHit(target, performance.now() / 1000);
-          } else {
-            const mat = target.mesh.material as THREE.MeshStandardMaterial;
-            mat.emissive.set(0xff6644);
-            // 連続ヒットで倒す簡易処理
-            target.userHits = (target.userHits ?? 0) + w.spec.damage;
-            if (target.userHits >= 100) {
-              target.userHits = 0;
+        if (this.enemyHitHook) this.enemyHitHook(obj);
+      } else {
+        const target = this.stage.targets.find((t) => t.mesh === obj && t.alive);
+        if (target) {
+          this.hud.flashHitmarker();
+          // モードのフックがあればそちらに任せる。処理されなければ通常動作。
+          let handled = false;
+          if (this.targetHitHook) {
+            handled = this.targetHitHook(target, performance.now() / 1000);
+          }
+          if (!handled) {
+            // 一撃で倒れる的なら倒す。そうでなければダメージ表現（色を明るく）。
+            if (w.spec.damage >= 50) {
               this.stage.onTargetHit(target, performance.now() / 1000);
+            } else {
+              const mat = target.mesh.material as THREE.MeshStandardMaterial;
+              mat.emissive.set(0xff6644);
+              // 連続ヒットで倒す簡易処理
+              target.userHits = (target.userHits ?? 0) + w.spec.damage;
+              if (target.userHits >= 100) {
+                target.userHits = 0;
+                this.stage.onTargetHit(target, performance.now() / 1000);
+              }
             }
           }
         }

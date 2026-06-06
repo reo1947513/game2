@@ -18,6 +18,7 @@ export class Input {
   private reloadQueued = false;
   private switchQueued: WeaponKind | null = null;
   private kickQueued = false;
+  private knifeQueued = false;
   private grenadeHeldDown = false;
   private grenadeReleasedQueued = false;
 
@@ -70,6 +71,7 @@ export class Input {
       if (code === "Digit3") this.switchQueued = WeaponKind.Shotgun;
       if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
       if (code === "KeyV") this.kickQueued = true;
+      if (code === "KeyF") this.knifeQueued = true;
       if (code === "KeyG") this.grenadeHeldDown = true;
     }
     this.keys.add(code);
@@ -175,6 +177,9 @@ export class Input {
   queueKick(): void {
     this.kickQueued = true;
   }
+  queueKnife(): void {
+    this.knifeQueued = true;
+  }
   // 手榴弾ボタンの押下状態を渡す。離した（true→false）瞬間に投擲を予約する。
   setGrenadeHeld(held: boolean): void {
     if (this.grenadeHeldDown && !held) this.grenadeReleasedQueued = true;
@@ -208,6 +213,7 @@ export class Input {
       reloadPressed: this.reloadQueued,
       switchTo: this.switchQueued,
       kickPressed: this.kickQueued,
+      knifePressed: this.knifeQueued,
       grenadeHeld: this.grenadeHeldDown,
       grenadeReleased: this.grenadeReleasedQueued,
       yaw: this.yaw,
@@ -220,6 +226,7 @@ export class Input {
     this.reloadQueued = false;
     this.switchQueued = null;
     this.kickQueued = false;
+    this.knifeQueued = false;
     this.grenadeReleasedQueued = false;
 
     return state;

@@ -9,6 +9,7 @@ import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
 import { KickView } from "./KickView";
+import { KnifeView } from "./KnifeView";
 import { GrenadeSystem } from "./GrenadeSystem";
 
 // すべてのシステムを組み合わせて毎フレーム動かす中心クラスです。
@@ -22,6 +23,7 @@ export class Game {
   private player: PlayerController;
   private weapons: WeaponSystem;
   private kickView: KickView;
+  private knifeView: KnifeView;
   private grenades: GrenadeSystem;
   private hud: HUD;
   private touch: TouchControls;
@@ -66,6 +68,7 @@ export class Game {
     this.hud = new HUD();
     this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud);
     this.kickView = new KickView(this.camera);
+    this.knifeView = new KnifeView(this.camera);
     this.grenades = new GrenadeSystem(this.scene);
 
     // タッチ操作レイヤー（スマホ・タブレット用）。一時停止メニューから設定を開く。
@@ -87,6 +90,7 @@ export class Game {
       health: this.health,
       finish: (lines: string[]) => this.onModeFinish(lines),
       kickView: this.kickView,
+      knifeView: this.knifeView,
       grenadeSystem: this.grenades,
     };
 
@@ -217,6 +221,7 @@ export class Game {
     // 武器・的・HUD更新
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
     this.kickView.update(dt);
+    this.knifeView.update(dt);
     // 手榴弾（長押しで軌道表示、離すと投擲）。向きはカメラ正面。
     const camDir = new THREE.Vector3();
     this.camera.getWorldDirection(camDir);

@@ -8,6 +8,7 @@ import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
 import { InputState } from "./types";
 import { KickView } from "./KickView";
+import { KnifeView } from "./KnifeView";
 import { GrenadeSystem } from "./GrenadeSystem";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
@@ -24,6 +25,8 @@ export interface GameContext {
   frameInput?: InputState;
   // 一人称の蹴りモーション。蹴り発動時に trigger() を呼ぶ。
   kickView?: KickView;
+  // 一人称のナイフ斬りモーション。斬り発動時に trigger() を呼ぶ。
+  knifeView?: KnifeView;
   // 手榴弾の管理。敵のいるモードで setEnabled(true) と onExplode を設定して使う。
   grenadeSystem?: GrenadeSystem;
 }
@@ -498,6 +501,7 @@ export class WaveSurvival implements GameMode {
   private eye = new THREE.Vector3();
   private nextContactTime = 0; // 接触ダメージの間隔管理（秒）
   private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
+  private nextKnifeTime = 0; // ナイフ斬りのクールダウン管理（秒）
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
@@ -508,6 +512,7 @@ export class WaveSurvival implements GameMode {
     this.alive = true;
     this.nextContactTime = now;
     this.nextKickTime = now;
+    this.nextKnifeTime = now;
 
     ctx.health.reset(100);
     ctx.health.show();
@@ -679,6 +684,20 @@ export class WaveSurvival implements GameMode {
     this.ctx.weapons.kick(hitAny);
   }
 
+  // ナイフ斬り：前方寄りの近い敵に高めのダメージを与える（弾き飛ばしはしない）。
+  private doKnife(): void {
+    if (!this.ctx) return;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = e.unit.group.position.x - this.eye.x;
+      const dz = e.unit.group.position.z - this.eye.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.0) continue;
+      e.hp -= 70;
+      if (e.hp <= 0) this.removeEnemy(e, true);
+    }
+  }
+
   // 手榴弾の爆発：中心から半径内の敵に、近いほど大きいダメージを与える。
   private onGrenadeExplode(x: number, z: number, radius: number): void {
     if (!this.ctx) return;
@@ -704,6 +723,14 @@ export class WaveSurvival implements GameMode {
       if (ctx.kickView) ctx.kickView.trigger();
       ctx.weapons.triggerKickDip();
       this.doKick();
+    }
+
+    // ナイフ：クールダウンが明けていて入力があれば、近い敵を斜めに斬る
+    if (ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
+      this.nextKnifeTime = now + 0.5;
+      if (ctx.knifeView) ctx.knifeView.trigger();
+      ctx.weapons.triggerKickDip();
+      this.doKnife();
     }
 
     let contacting = false;
@@ -904,6 +931,7 @@ export class BotDeathmatch implements GameMode {
   private playerDead = false;
   private playerRespawnAt = 0;
   private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
+  private nextKnifeTime = 0; // ナイフ斬りのクールダウン管理（秒）
   private eye = new THREE.Vector3();
 
   // 壁越し射撃を防ぐ視線判定の作業用
@@ -930,6 +958,7 @@ export class BotDeathmatch implements GameMode {
     this.playerDead = false;
     this.playerRespawnAt = 0;
     this.nextKickTime = now;
+    this.nextKnifeTime = now;
     this.endTime = now + this.DURATION;
 
     ctx.health.reset(100);
@@ -1034,6 +1063,14 @@ export class BotDeathmatch implements GameMode {
       if (ctx.kickView) ctx.kickView.trigger();
       ctx.weapons.triggerKickDip();
       this.doKickBots(now);
+    }
+
+    // ナイフ：クールダウンが明けていて入力があれば、近いボットを斜めに斬る
+    if (ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
+      this.nextKnifeTime = now + 0.5;
+      if (ctx.knifeView) ctx.knifeView.trigger();
+      ctx.weapons.triggerKickDip();
+      this.doKnifeBots(now);
     }
 
     for (const b of this.bots) {
@@ -1150,6 +1187,20 @@ export class BotDeathmatch implements GameMode {
       if (b.hp <= 0) this.killBot(b, now);
     }
     this.ctx.weapons.kick(hitAny);
+  }
+
+  // ナイフ斬り：前方寄りの近いボットに高めのダメージを与える（弾き飛ばしはしない）。
+  private doKnifeBots(now: number): void {
+    if (!this.ctx) return;
+    for (let i = this.bots.length - 1; i >= 0; i--) {
+      const b = this.bots[i];
+      const dx = b.unit.group.position.x - this.eye.x;
+      const dz = b.unit.group.position.z - this.eye.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 2.0) continue;
+      b.hp -= 70;
+      if (b.hp <= 0) this.killBot(b, now);
+    }
   }
 
   // 手榴弾の爆発：中心から半径内のボットに、近いほど大きいダメージを与える。

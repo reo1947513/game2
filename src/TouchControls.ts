@@ -376,7 +376,7 @@ export class TouchControls {
     this.lookLayer.addEventListener("pointerdown", (e) => {
       if (this.mode !== "play") return;
       e.preventDefault();
-      if (this.lookId !== null) return;
+      // 取りこぼしで lookId が残っていても、新しい指で上書きしてエイムを復活させる
       this.lookId = e.pointerId;
       this.lookLast = { x: e.clientX, y: e.clientY };
       this.lookLayer.setPointerCapture(e.pointerId);
@@ -394,6 +394,29 @@ export class TouchControls {
     };
     this.lookLayer.addEventListener("pointerup", end);
     this.lookLayer.addEventListener("pointercancel", end);
+    // 取りこぼし対策：画面のどこで指が離れても、宙に浮いたタッチを強制解放する
+    window.addEventListener("pointerup", (e) => this.releaseStalePointer(e.pointerId));
+    window.addEventListener("pointercancel", (e) => this.releaseStalePointer(e.pointerId));
+  }
+
+  // setPointerCapture の取りこぼしで宙に浮いたタッチ（視点・スティック・ホールド）を解放する。
+  // 指を離したイベントが該当レイヤーに届かなくても、ここで確実に元へ戻す。
+  private releaseStalePointer(pointerId: number): void {
+    if (this.lookId === pointerId) this.lookId = null;
+    if (this.joyId === pointerId) {
+      this.joyId = null;
+      this.joyKnob.style.transform = "translate(-50%, -50%)";
+      this.input.setTouchMove(0, 0);
+      this.clearSprint();
+    }
+    for (const def of ACTIONS) {
+      if (def.type === "hold" && this.holdId[def.key] === pointerId) {
+        this.holdId[def.key] = null;
+        if (def.key === "grenade") this.input.setGrenadeHeld(false);
+        else this.input.setTouchHold(def.key as HoldKey, false);
+        this.btnMap[def.key].classList.remove("active");
+      }
+    }
   }
 
   // ---- 移動スティック ----

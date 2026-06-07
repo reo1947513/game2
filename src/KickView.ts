@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
-// 一人称の蹴りモーション。画面の下から脚（すね・膝・ブーツ）を前方へ
-// 勢いよく振り上げて蹴る。平面の軌跡は使わず、立体の脚そのものを見せる。
+// 一人称の蹴りモーション。画面の下から脚（すね・膝・ブーツ）の足裏を
+// 前方へ押し出す踏み込み。振り上げず、前へ踏み込んで止めてから戻す。
 export class KickView {
   private group: THREE.Group; // 脚全体（カメラの子）
   private pivot: THREE.Group; // 付け根。ここを軸に脚を振る
@@ -9,8 +9,12 @@ export class KickView {
   private active = false;
   private t = 0; // アニメ進行（0〜1）
   private readonly DUR = 0.32; // 蹴り1回の所要時間（秒）
-  private readonly FROM = -Math.PI * 0.5; // 始め：脚を後ろへ畳んで画面外に隠す
-  private readonly TO = Math.PI * 0.55; // 蹴り切り：前方やや上へ振り上げる
+  private readonly PUSH_OUT = 0.35; // 押し出しが終わる進行度（鋭く出す）
+  private readonly ROT_REST = 1.3; // 構え：足裏をすでに前へ向けておく
+  private readonly ROT_PUSH = 1.55; // 押し出し：足裏を前方へ向けたまま（回転は控えめ）
+  // 付け根の位置（構え→押し出し）。高さはほぼ変えず、奥行きだけ前(z-)へ水平に突き出す。
+  private readonly POS_REST = new THREE.Vector3(0.2, -0.6, -0.15);
+  private readonly POS_PUSH = new THREE.Vector3(0.2, -0.52, -0.95);
 
   private geos: THREE.BufferGeometry[] = [];
   private mats: THREE.Material[] = [];
@@ -19,8 +23,8 @@ export class KickView {
     this.group = new THREE.Group();
     this.pivot = new THREE.Group();
 
-    // 付け根は画面のやや右・下・手前。ここを軸に脚を前へ振り出す。
-    this.pivot.position.set(0.2, -0.5, -0.35);
+    // 付け根は画面のやや右・下・手前。ここから前方へ押し出す。
+    this.pivot.position.copy(this.POS_REST);
     this.group.add(this.pivot);
 
     const legMat = new THREE.MeshStandardMaterial({
@@ -68,8 +72,8 @@ export class KickView {
     toe.position.set(0, -0.59, 0.32);
     this.pivot.add(toe);
 
-    // 初期は脚を後ろへ畳んで隠す
-    this.pivot.rotation.x = this.FROM;
+    // 初期は構えの姿勢で隠す
+    this.pivot.rotation.x = this.ROT_REST;
     this.group.visible = false;
 
     camera.add(this.group);
@@ -91,21 +95,25 @@ export class KickView {
       return;
     }
 
-    // 振り出し（前半）は素早く勢いよく、戻り（後半）はやや遅く。
-    const kickOut = 0.4; // 振り出しが終わる進行度
-    let swing: number; // 0=畳み（隠れ）, 1=蹴り切り（前方）
+    // 押し出し（前半）は素早く鋭く、戻り（後半）はやや遅く。
+    const kickOut = this.PUSH_OUT; // 押し出しが終わる進行度
+    let swing: number; // 0=構え（下・手前）, 1=押し出し（前方）
     if (this.t < kickOut) {
       const u = this.t / kickOut;
-      swing = 1 - (1 - u) * (1 - u); // easeOut：勢いよく出る
+      swing = 1 - (1 - u) * (1 - u); // easeOut：勢いよく前へ
     } else {
       const u = (this.t - kickOut) / (1 - kickOut);
-      swing = 1 - u * u; // easeIn：戻る
+      swing = 1 - u * u; // easeIn：構えへ戻る
     }
 
-    // 脚の振り角度
-    this.pivot.rotation.x = this.FROM + (this.TO - this.FROM) * swing;
-    // 蹴り切りに向けて少し前へ踏み込む見せ方
-    this.pivot.position.z = -0.35 - swing * 0.12;
+    // 振り上げではなく、足裏を前方へ押し出す踏み込み。
+    this.pivot.rotation.x =
+      this.ROT_REST + (this.ROT_PUSH - this.ROT_REST) * swing;
+    this.pivot.position.set(
+      this.POS_REST.x + (this.POS_PUSH.x - this.POS_REST.x) * swing,
+      this.POS_REST.y + (this.POS_PUSH.y - this.POS_REST.y) * swing,
+      this.POS_REST.z + (this.POS_PUSH.z - this.POS_REST.z) * swing
+    );
   }
 
   dispose(): void {

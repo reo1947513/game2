@@ -63,6 +63,7 @@ const ACTIONS: ActionDef[] = [
   { key: "weapon", label: "ASSAULT", type: "tap" },
   // 蹴り（タップ）と手榴弾（長押しで軌道表示、離すと投擲）
   { key: "kick", label: "蹴り", type: "tap" },
+  { key: "knife", label: "ナイフ", type: "tap" },
   { key: "grenade", label: "手榴弾", type: "hold" },
 ];
 
@@ -77,6 +78,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   prone: "伏せ",
   weapon: "武器",
   kick: "蹴り",
+  knife: "ナイフ",
   grenade: "手榴弾",
 };
 
@@ -94,6 +96,7 @@ const DEFAULT_LAYOUT: Layout = {
     prone: { x: 55, y: 84 },
     weapon: { x: 50, y: 10 },
     kick: { x: 88, y: 36 },
+    knife: { x: 60, y: 24 },
     grenade: { x: 73, y: 28 },
   },
   scales: {},
@@ -568,6 +571,9 @@ export class TouchControls {
         break;
       case "kick":
         this.input.queueKick();
+        break;
+      case "knife":
+        this.input.queueKnife();
         break;
     }
   }

@@ -340,6 +340,20 @@
           padding: 10px 22px;
         }
       }
+      /* ゲーム中の操作ヒント（左下）。タッチ端末はボタンがあるので隠す。 */
+      #combat-hints {
+        position: fixed;
+        left: 16px;
+        bottom: 18px;
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 12px;
+        font-family: system-ui, sans-serif;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+        pointer-events: none;
+        z-index: 40;
+      }
+      #combat-hints b { color: rgba(255, 220, 120, 0.85); }
+      body.touch-device #combat-hints { display: none; }
       #scope { display: none !important; }
     </style>
   </head>
@@ -373,6 +387,7 @@
         <div class="stance" id="stance-label">STAND</div>
         <div id="speed-label">SPEED 0.0</div>
       </div>
+      <div id="combat-hints"><b>V</b> 蹴り　<b>F</b> ナイフ　<b>G</b> 手榴弾（長押し）</div>
     </div>
 
     <div id="overlay">

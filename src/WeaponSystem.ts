@@ -49,8 +49,8 @@ export class WeaponSystem {
   // 蹴り時に武器を一瞬下げる量（0〜1）
   private kickDip = 0;
 
-  // ナイフ斬りのあいだ銃を隠す残り時間（秒）。0より大きい間は武器モデルを非表示にする。
-  private knifeHideTimer = 0;
+  // 蹴り・ナイフのあいだ銃を隠す残り時間（秒）。0より大きい間は武器モデルを非表示にする。
+  private hideTimer = 0;
 
   private raycaster = new THREE.Raycaster();
   private shootables: THREE.Object3D[] = [];
@@ -114,14 +114,15 @@ export class WeaponSystem {
     if (hit) this.hud.flashHitmarker();
   }
 
-  // 蹴りに合わせて武器を一瞬下げる。蹴り発動時に呼ぶ。
+  // 蹴りに合わせて武器を一瞬下げ、蹴りモーション中は銃を消す。蹴り発動時に呼ぶ。
   triggerKickDip(): void {
     this.kickDip = 1;
+    this.hideTimer = 0.34; // 蹴りモーション(0.32秒)のあいだ銃を非表示にする
   }
 
   // ナイフ斬りのあいだ銃を消す。ナイフ発動時に呼ぶ。
   triggerKnifeHide(): void {
-    this.knifeHideTimer = 0.28;
+    this.hideTimer = 0.28;
   }
 
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
@@ -391,7 +392,7 @@ export class WeaponSystem {
     // 蹴りで下げた武器を戻す（約0.3秒で戻る）
     this.kickDip = Math.max(0, this.kickDip - dt * 3.2);
     // ナイフ斬りで銃を隠す残り時間を減らす
-    this.knifeHideTimer = Math.max(0, this.knifeHideTimer - dt);
+    this.hideTimer = Math.max(0, this.hideTimer - dt);
     this.prevFiring = input.firing;
   }
 
@@ -587,9 +588,9 @@ export class WeaponSystem {
 
     // 覗き込み時、スナイパーは銃モデルがカメラ至近で視界を塞ぐため隠す（実質スコープ視点）。
     // アサルトなど scope=false の武器は通常どおり表示する。
-    // さらにナイフ斬り中（knifeHideTimer > 0）は銃を消す。
+    // さらに蹴り・ナイフ中（hideTimer > 0）は銃を消す。
     w.model.visible =
-      !(w.spec.scope && this.adsProgress > 0.5) && this.knifeHideTimer <= 0;
+      !(w.spec.scope && this.adsProgress > 0.5) && this.hideTimer <= 0;
   }
 
   // 視野角の更新（ADSで拡大）

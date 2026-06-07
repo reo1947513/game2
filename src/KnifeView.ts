@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
-// 一人称のナイフ斬りモーション。画面の左上端で構え、右下端へ斜めに切り下ろす。
-// 蹴りと同じく、攻撃のあいだだけ手元にナイフを出して振る。
+// 一人称のナイフ斬りモーション。手元（柄の支点）はほぼ固定し、回転を主体に
+// して刃先で弧を描くように振り下ろす。攻撃のあいだだけ手元にナイフを出す。
 export class KnifeView {
   private group: THREE.Group; // ナイフ全体（カメラの子）
   private pivot: THREE.Group; // 手元。ここを軸に斜めへ振る
@@ -10,11 +10,11 @@ export class KnifeView {
   private t = 0; // アニメ進行（0〜1）
   private readonly DUR = 0.26; // 斬り1回の所要時間（秒）
 
-  // 左上端（X左端・Y上端）で構え、右下端へ斜めに切り下ろす姿勢
-  private readonly FROM_ROT = 0.6; // 左上に刃を立てる
-  private readonly TO_ROT = -1.2; // 右下へ振り下ろす
-  private readonly FROM_POS = new THREE.Vector3(-0.48, 0.36, -0.55); // 左上端（X左端・Y上端）
-  private readonly TO_POS = new THREE.Vector3(0.48, -0.42, -0.5); // 右下端
+  // 手元（支点）はほぼ固定し、回転主体で刃先に弧を描かせる姿勢
+  private readonly FROM_ROT = 1.1; // 刃先を左上へ向ける
+  private readonly TO_ROT = -1.7; // 刃先を右下へ振り下ろす
+  private readonly FROM_POS = new THREE.Vector3(-0.05, 0.05, -0.55); // 手元（構え）
+  private readonly TO_POS = new THREE.Vector3(0.1, -0.2, -0.5); // 手元（振り切り）
 
   private geos: THREE.BufferGeometry[] = [];
   private mats: THREE.Material[] = [];
@@ -102,7 +102,7 @@ export class KnifeView {
 
     // 薙ぎ（前半）は素早く、戻し（後半）はやや遅く。
     const slashOut = 0.45; // 薙ぎが終わる進行度
-    let s: number; // 0=構え（左上）, 1=斬り切り（右下）
+    let s: number; // 0=構え, 1=振り切り
     if (this.t < slashOut) {
       const u = this.t / slashOut;
       s = 1 - (1 - u) * (1 - u); // easeOut：素早く薙ぐ
@@ -111,6 +111,7 @@ export class KnifeView {
       s = 1 - u * u; // easeIn：構えへ戻す
     }
 
+    // 手元はほぼ固定し、回転(rotation.z)を主体に振る。刃先がその弧を描く。
     this.pivot.rotation.z = this.FROM_ROT + (this.TO_ROT - this.FROM_ROT) * s;
     this.pivot.position.set(
       this.FROM_POS.x + (this.TO_POS.x - this.FROM_POS.x) * s,

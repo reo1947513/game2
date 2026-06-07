@@ -10,11 +10,11 @@ export class KnifeView {
   private t = 0; // アニメ進行（0〜1）
   private readonly DUR = 0.26; // 斬り1回の所要時間（秒）
 
-  // 構え（右上）から斬り切り（左下）までの姿勢
-  private readonly FROM_ROT = -0.5; // 画面内の傾き：右上に立てる
-  private readonly TO_ROT = 1.15; // 斬り切り：左下へ薙ぐ
-  private readonly FROM_POS = new THREE.Vector3(0.34, 0.14, -0.6);
-  private readonly TO_POS = new THREE.Vector3(-0.14, -0.24, -0.55);
+  // 左端・高さ中央(Y0)で構え、右下端へ斜めに切り下げる姿勢
+  private readonly FROM_ROT = -1.0; // 構え：刃を右上へ立てる
+  private readonly TO_ROT = 0.5; // 斬り切り：右下へ振り下ろす
+  private readonly FROM_POS = new THREE.Vector3(-0.4, 0.0, -0.6); // 左端・Y0
+  private readonly TO_POS = new THREE.Vector3(0.4, -0.32, -0.55); // 右下端
 
   private geos: THREE.BufferGeometry[] = [];
   private mats: THREE.Material[] = [];

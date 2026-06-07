@@ -729,7 +729,7 @@ export class WaveSurvival implements GameMode {
     if (ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
       this.nextKnifeTime = now + 0.5;
       if (ctx.knifeView) ctx.knifeView.trigger();
-      ctx.weapons.triggerKickDip();
+      ctx.weapons.triggerKnifeHide();
       this.doKnife();
     }
 
@@ -1069,7 +1069,7 @@ export class BotDeathmatch implements GameMode {
     if (ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
       this.nextKnifeTime = now + 0.5;
       if (ctx.knifeView) ctx.knifeView.trigger();
-      ctx.weapons.triggerKickDip();
+      ctx.weapons.triggerKnifeHide();
       this.doKnifeBots(now);
     }
 

@@ -1,11 +1,14 @@
 import * as THREE from "three";
 import { Grenade } from "./Grenade";
 
-// 手榴弾の全体管理。長押し中は放物線の軌道を点で見せ、離すと投げる。
+// 手榴弾の全体管理。長押し中は放物線の軌道を線で見せ、離すと投げる。
 // 飛行・爆発・爆発エフェクト・所持数をまとめて扱い、爆発時にコールバックで通知する。
 export class GrenadeSystem {
   private grenades: Grenade[] = [];
-  private previewDots: THREE.Mesh[] = [];
+  private lineMesh!: THREE.Mesh; // 軌道の連続線（チューブ）
+  private lineMat!: THREE.MeshBasicMaterial;
+  private ringMesh!: THREE.Mesh; // 着弾点の輪
+  private ringMat!: THREE.MeshBasicMaterial;
   private explosions: {
     mesh: THREE.Mesh;
     t: number;
@@ -30,24 +33,32 @@ export class GrenadeSystem {
   // 所持数が変わったとき呼ばれる。HUD表示などに使う。
   onAmmoChange: ((ammo: number) => void) | null = null;
 
-  private dotGeo: THREE.SphereGeometry;
-  private dotMat: THREE.MeshBasicMaterial;
-
   constructor(private scene: THREE.Scene) {
-    // 軌道予測の点（あらかじめ作っておき、毎フレーム位置だけ更新する）
-    this.dotGeo = new THREE.SphereGeometry(0.07, 8, 6);
-    this.dotMat = new THREE.MeshBasicMaterial({
-      color: 0xffd23a,
+    // 軌道の連続線（チューブ）。毎フレーム形だけ作り直す。
+    this.lineMat = new THREE.MeshBasicMaterial({
+      color: 0xff5a2a,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.85,
       depthWrite: false,
     });
-    for (let i = 0; i < 30; i++) {
-      const dot = new THREE.Mesh(this.dotGeo, this.dotMat);
-      dot.visible = false;
-      this.scene.add(dot);
-      this.previewDots.push(dot);
-    }
+    this.lineMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.lineMat);
+    this.lineMesh.visible = false;
+    this.lineMesh.frustumCulled = false;
+    this.scene.add(this.lineMesh);
+
+    // 着弾点の輪（地面に水平に置く）
+    this.ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff5a2a,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ringGeo = new THREE.RingGeometry(0.35, 0.5, 24);
+    this.ringMesh = new THREE.Mesh(ringGeo, this.ringMat);
+    this.ringMesh.rotation.x = -Math.PI / 2;
+    this.ringMesh.visible = false;
+    this.scene.add(this.ringMesh);
 
     // 所持数の画面表示（手榴弾が使えるモードのときだけ出す）
     this.hudEl = document.createElement("div");
@@ -147,23 +158,48 @@ export class GrenadeSystem {
     const vx = dir.x * this.THROW_SPEED;
     const vy = dir.y * this.THROW_SPEED + this.THROW_UP;
     const vz = dir.z * this.THROW_SPEED;
-    let shown = 0;
-    for (let i = 0; i < this.previewDots.length; i++) {
+
+    // 放物線に沿った点を集め、地面に着いたところで打ち切る
+    const pts: THREE.Vector3[] = [];
+    let landing: THREE.Vector3 | null = null;
+    for (let i = 0; i < 80; i++) {
       const t = i * this.STEP;
       const py = origin.y + vy * t - 0.5 * this.G * t * t;
-      if (py <= 0.05) break; // 地面より下は描かない
-      const dot = this.previewDots[i];
-      dot.position.set(origin.x + vx * t, py, origin.z + vz * t);
-      dot.visible = true;
-      shown = i + 1;
+      const px = origin.x + vx * t;
+      const pz = origin.z + vz * t;
+      if (py <= 0.05) {
+        landing = new THREE.Vector3(px, 0.06, pz);
+        break;
+      }
+      pts.push(new THREE.Vector3(px, py, pz));
     }
-    for (let i = shown; i < this.previewDots.length; i++) {
-      this.previewDots[i].visible = false;
+
+    if (pts.length < 2) {
+      this.hidePreview();
+      return;
+    }
+    if (landing) pts.push(landing);
+
+    // 点を滑らかな曲線にして、太いチューブの線として描く
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const segments = Math.max(12, pts.length * 2);
+    const geo = new THREE.TubeGeometry(curve, segments, 0.05, 8, false);
+    this.lineMesh.geometry.dispose();
+    this.lineMesh.geometry = geo;
+    this.lineMesh.visible = true;
+
+    // 着弾点に輪を出す
+    if (landing) {
+      this.ringMesh.position.set(landing.x, 0.06, landing.z);
+      this.ringMesh.visible = true;
+    } else {
+      this.ringMesh.visible = false;
     }
   }
 
   private hidePreview(): void {
-    for (const d of this.previewDots) d.visible = false;
+    this.lineMesh.visible = false;
+    this.ringMesh.visible = false;
   }
 
   private spawnExplosion(x: number, y: number, z: number): void {

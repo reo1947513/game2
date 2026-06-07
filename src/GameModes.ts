@@ -92,6 +92,37 @@ function resetTargets(stage: Stage): void {
   }
 }
 
+// 蹴り・ナイフ・手榴弾を全モード共通で使えるようにするための補助。
+// 敵のいないモード（的当て・動く的・パルクール）はダメージ判定を持たないため、
+// モーションと手榴弾の投擲・爆発演出だけを有効にする（命中対象がないので無害）。
+function enableMotionActions(ctx: GameContext): void {
+  if (ctx.grenadeSystem) {
+    ctx.grenadeSystem.setEnabled(true);
+    ctx.grenadeSystem.setAmmo(3);
+    // onExplode は設定しない＝範囲ダメージは無し（敵のいるモードだけが設定する）
+  }
+}
+
+// モード終了時に手榴弾を片付ける（敵のいないモード用）。
+function disableMotionActions(ctx: GameContext): void {
+  if (ctx.grenadeSystem) {
+    ctx.grenadeSystem.setEnabled(false);
+    ctx.grenadeSystem.clear();
+  }
+}
+
+// 毎フレーム、蹴り・ナイフの入力でモーションだけ出す（ダメージは与えない）。
+function updateMotionActions(ctx: GameContext): void {
+  if (ctx.frameInput?.kickPressed) {
+    ctx.kickView?.trigger();
+    ctx.weapons.triggerKickDip();
+  }
+  if (ctx.frameInput?.knifePressed) {
+    ctx.knifeView?.trigger();
+    ctx.weapons.triggerKnifeHide();
+  }
+}
+
 // ===== モード1：ターゲットラッシュ（制限時間内にできるだけ多く撃つ） =====
 export class TargetRush implements GameMode {
   id = "rush";
@@ -128,10 +159,12 @@ export class TargetRush implements GameMode {
     };
 
     ctx.ui.showHud(true);
+    enableMotionActions(ctx);
   }
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
+    updateMotionActions(ctx);
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -144,6 +177,7 @@ export class TargetRush implements GameMode {
   exit(ctx: GameContext): void {
     ctx.weapons.shotFiredHook = null;
     ctx.weapons.targetHitHook = null;
+    disableMotionActions(ctx);
     ctx.ui.showHud(false);
   }
 }
@@ -202,10 +236,12 @@ export class MovingRange implements GameMode {
     };
 
     ctx.ui.showHud(true);
+    enableMotionActions(ctx);
   }
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
+    updateMotionActions(ctx);
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -236,6 +272,7 @@ export class MovingRange implements GameMode {
     this.motions.clear();
     ctx.weapons.shotFiredHook = null;
     ctx.weapons.targetHitHook = null;
+    disableMotionActions(ctx);
     ctx.ui.showHud(false);
   }
 }
@@ -305,6 +342,7 @@ export class Parkour implements GameMode {
 
     this.highlight();
     ctx.ui.showHud(true);
+    enableMotionActions(ctx);
   }
 
   // 現在のチェックポイントを明るく、通過済みを薄く、未到達を中間の明るさにする
@@ -327,6 +365,7 @@ export class Parkour implements GameMode {
   update(ctx: GameContext, dt: number, now: number): void {
     if (this.finished) return;
     ctx.player.getEyePosition(this.eye);
+    updateMotionActions(ctx);
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -373,6 +412,7 @@ export class Parkour implements GameMode {
     }
     this.platforms = [];
     this.points = [];
+    disableMotionActions(ctx);
     ctx.ui.showHud(false);
   }
 }

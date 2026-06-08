@@ -124,6 +124,12 @@ export class WeaponSystem {
     this.hideTimer = 0.28;
   }
 
+  // 処刑（突き刺し）演出のあいだ銃を消す。演出の長さ（秒）を渡す。
+  // すでに設定済みの非表示時間より長いときだけ延長する。
+  triggerFinishHide(duration: number): void {
+    this.hideTimer = Math.max(this.hideTimer, duration);
+  }
+
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
   private metal(color: number): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({

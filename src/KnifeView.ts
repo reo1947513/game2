@@ -10,6 +10,13 @@ export class KnifeView {
   private t = 0; // アニメ進行（0〜1）
   private readonly DUR = 0.26; // 斬り1回の所要時間（秒）
 
+  // 処刑（突き刺し）モーション用。通常の斜め斬りとは別の動きにする。
+  private finishMode = false; // true のあいだは突き刺しモーションを再生する
+  private readonly FINISH_DUR = 0.7; // 突き刺し1回の所要時間（秒）
+  // 突き刺しの手元位置（前方へ深く突き出す）と、刃を前方へ倒す回転量
+  private readonly STAB_POS = new THREE.Vector3(0.0, -0.05, -0.95);
+  private readonly STAB_ROT_X = -Math.PI / 2; // 上向きの刃を前方水平へ倒す
+
   // 手元（支点）はほぼ固定し、回転主体で刃先に弧を描かせる姿勢
   private readonly FROM_ROT = 1.1; // 刃先を左上へ向ける
   private readonly TO_ROT = -1.7; // 刃先を右下へ振り下ろす
@@ -81,22 +88,58 @@ export class KnifeView {
     camera.add(this.group);
   }
 
-  // 斬りを開始する
+  // 斬りを開始する（通常の斜め斬り）
   trigger(): void {
     this.active = true;
+    this.finishMode = false;
+    this.t = 0;
+    this.group.visible = true;
+  }
+
+  // 処刑の突き刺しを開始する
+  triggerFinish(): void {
+    this.active = true;
+    this.finishMode = true;
     this.t = 0;
     this.group.visible = true;
   }
 
   update(dt: number): void {
     if (!this.active) return;
+
+    // 処刑（突き刺し）モーション：前へ突き出して引き戻す
+    if (this.finishMode) {
+      this.t += dt / this.FINISH_DUR;
+      if (this.t >= 1) {
+        this.active = false;
+        this.finishMode = false;
+        this.group.visible = false;
+        // 次に備えて通常の構えへ戻す（回転を完全に戻す）
+        this.pivot.position.copy(this.FROM_POS);
+        this.pivot.rotation.set(0, 0, this.FROM_ROT);
+        return;
+      }
+      // 突き出して引き戻す山なりの動き（0→1→0）
+      const s = Math.sin(this.t * Math.PI);
+      this.pivot.position.set(
+        this.FROM_POS.x + (this.STAB_POS.x - this.FROM_POS.x) * s,
+        this.FROM_POS.y + (this.STAB_POS.y - this.FROM_POS.y) * s,
+        this.FROM_POS.z + (this.STAB_POS.z - this.FROM_POS.z) * s
+      );
+      // 刃を前方へ倒し、構えの左傾き(FROM_ROT)を正面へ戻す
+      this.pivot.rotation.x = this.STAB_ROT_X * s;
+      this.pivot.rotation.z = this.FROM_ROT * (1 - s);
+      return;
+    }
+
+    // 通常の斜め斬りモーション
     this.t += dt / this.DUR;
     if (this.t >= 1) {
       this.active = false;
       this.group.visible = false;
       // 次に備えて構えへ戻す
       this.pivot.position.copy(this.FROM_POS);
-      this.pivot.rotation.z = this.FROM_ROT;
+      this.pivot.rotation.set(0, 0, this.FROM_ROT);
       return;
     }
 

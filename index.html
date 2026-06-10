@@ -355,6 +355,39 @@
       #combat-hints b { color: rgba(255, 220, 120, 0.85); }
       body.touch-device #combat-hints { display: none; }
       #scope { display: none !important; }
+      #melee-banner {
+        position: absolute;
+        left: 50%;
+        top: 64%;
+        transform: translate(-50%, -50%);
+        font: 700 30px/1 system-ui, -apple-system, sans-serif;
+        letter-spacing: 0.3em;
+        color: #ff5a4d;
+        text-shadow: 0 0 12px rgba(255, 60, 40, 0.7);
+        opacity: 0;
+        pointer-events: none;
+        white-space: nowrap;
+        transition: opacity 0.08s linear;
+      }
+      #killfeed {
+        position: absolute;
+        right: 18px;
+        top: 64px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        pointer-events: none;
+      }
+      #killfeed .kf {
+        font: 600 14px/1 system-ui, -apple-system, sans-serif;
+        color: #ffe6c7;
+        background: rgba(20, 12, 8, 0.55);
+        border-left: 3px solid #ff7b1c;
+        padding: 4px 8px;
+        border-radius: 3px;
+        letter-spacing: 0.05em;
+      }
     </style>
   </head>
   <body>
@@ -388,6 +421,9 @@
         <div id="speed-label">SPEED 0.0</div>
       </div>
       <div id="combat-hints"><b>V</b> 蹴り　<b>F</b> ナイフ　<b>G</b> 手榴弾（長押し）</div>
+
+      <div id="melee-banner"></div>
+      <div id="killfeed"></div>
     </div>
 
     <div id="overlay">

@@ -24,6 +24,11 @@ export class PlayerController {
   private slideSpeed = 0;
   private readonly slideDir = new THREE.Vector3();
 
+  // 近接ランジ（自動踏み込み）による水平速度の上書き
+  private lungeOverride = false;
+  private lungeVx = 0;
+  private lungeVz = 0;
+
   // 見た目の目線高さ（滑らかに上下させる）
   private currentEye = 1.65;
 
@@ -94,6 +99,13 @@ export class PlayerController {
   respawn(x = 0, y = 0, z = 8): void {
     this.position.set(x, y, z);
     this.velocity.set(0, 0, 0);
+  }
+
+  // 近接の踏み込み中、外部から水平速度を上書きする。active=false で通常移動へ戻す。
+  setLungeOverride(active: boolean, vx: number, vz: number): void {
+    this.lungeOverride = active;
+    this.lungeVx = vx;
+    this.lungeVz = vz;
   }
 
   // カメラに渡す目線のワールド座標
@@ -235,6 +247,12 @@ export class PlayerController {
 
   // 水平移動の計算
   private applyHorizontal(dt: number, input: InputState): void {
+    // 近接ランジ中は移動入力を無視し、踏み込み速度で水平速度を上書きする。
+    if (this.lungeOverride) {
+      this.velocity.x = this.lungeVx;
+      this.velocity.z = this.lungeVz;
+      return;
+    }
     if (this.sliding) {
       // スライド中は滑る向きに進み、徐々に減速。わずかに方向修正できる。
       this.slideSpeed -= (this.SLIDE_SPEED / this.SLIDE_DURATION) * dt;

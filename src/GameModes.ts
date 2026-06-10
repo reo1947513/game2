@@ -6,10 +6,8 @@ import { PlayerController } from "./PlayerController";
 import { Health } from "./Health";
 import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
-import { InputState } from "./types";
-import { KickView } from "./KickView";
-import { KnifeView } from "./KnifeView";
 import { GrenadeSystem } from "./GrenadeSystem";
+import { MeleeTarget, MeleeTargetProvider } from "./combat/MeleeTarget";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -21,14 +19,10 @@ export interface GameContext {
   health: Health;
   // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
   finish: (lines: string[]) => void;
-  // Game本体が毎フレーム入れる、その瞬間の入力。モードが蹴り・投擲の判定に使う。
-  frameInput?: InputState;
-  // 一人称の蹴りモーション。蹴り発動時に trigger() を呼ぶ。
-  kickView?: KickView;
-  // 一人称のナイフ斬りモーション。斬り発動時に trigger() を呼ぶ。
-  knifeView?: KnifeView;
   // 手榴弾の管理。敵のいるモードで setEnabled(true) と onExplode を設定して使う。
   grenadeSystem?: GrenadeSystem;
+  // 近接攻撃の対象提供者。敵のいるモードが enter で自分を登録し、exit で null に戻す。
+  meleeProvider?: MeleeTargetProvider | null;
 }
 
 // 1つの遊び方（モード）の共通の形です。
@@ -92,10 +86,9 @@ function resetTargets(stage: Stage): void {
   }
 }
 
-// 蹴り・ナイフ・手榴弾を全モード共通で使えるようにするための補助。
-// 敵のいないモード（的当て・動く的・パルクール）はダメージ判定を持たないため、
-// モーションと手榴弾の投擲・爆発演出だけを有効にする（命中対象がないので無害）。
-function enableMotionActions(ctx: GameContext): void {
+// 敵のいないモード（的当て・動く的・パルクール）でも手榴弾だけは使えるようにする補助。
+// 近接（ナイフ・キック）は Game 本体が全モード共通で駆動するため、ここでは扱わない。
+function enableGrenades(ctx: GameContext): void {
   if (ctx.grenadeSystem) {
     ctx.grenadeSystem.setEnabled(true);
     ctx.grenadeSystem.setAmmo(3);
@@ -104,22 +97,10 @@ function enableMotionActions(ctx: GameContext): void {
 }
 
 // モード終了時に手榴弾を片付ける（敵のいないモード用）。
-function disableMotionActions(ctx: GameContext): void {
+function disableGrenades(ctx: GameContext): void {
   if (ctx.grenadeSystem) {
     ctx.grenadeSystem.setEnabled(false);
     ctx.grenadeSystem.clear();
-  }
-}
-
-// 毎フレーム、蹴り・ナイフの入力でモーションだけ出す（ダメージは与えない）。
-function updateMotionActions(ctx: GameContext): void {
-  if (ctx.frameInput?.kickPressed) {
-    ctx.kickView?.trigger();
-    ctx.weapons.triggerKickDip();
-  }
-  if (ctx.frameInput?.knifePressed) {
-    ctx.knifeView?.trigger();
-    ctx.weapons.triggerKnifeHide();
   }
 }
 
@@ -159,12 +140,11 @@ export class TargetRush implements GameMode {
     };
 
     ctx.ui.showHud(true);
-    enableMotionActions(ctx);
+    enableGrenades(ctx);
   }
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
-    updateMotionActions(ctx);
     const remain = Math.max(0, this.endTime - now);
     const acc = this.fired > 0 ? Math.round((this.hits / this.fired) * 100) : 0;
     ctx.ui.setHud([`残り ${remain.toFixed(1)} 秒`, `スコア ${this.score}`, `命中率 ${acc}%`]);
@@ -177,7 +157,7 @@ export class TargetRush implements GameMode {
   exit(ctx: GameContext): void {
     ctx.weapons.shotFiredHook = null;
     ctx.weapons.targetHitHook = null;
-    disableMotionActions(ctx);
+    disableGrenades(ctx);
     ctx.ui.showHud(false);
   }
 }
@@ -236,12 +216,11 @@ export class MovingRange implements GameMode {
     };
 
     ctx.ui.showHud(true);
-    enableMotionActions(ctx);
+    enableGrenades(ctx);
   }
 
   update(ctx: GameContext, _dt: number, now: number): void {
     if (this.finished) return;
-    updateMotionActions(ctx);
 
     // 生きている的を経路に沿って動かす（当たり判定の箱も更新）
     for (const t of ctx.stage.targets) {
@@ -272,7 +251,7 @@ export class MovingRange implements GameMode {
     this.motions.clear();
     ctx.weapons.shotFiredHook = null;
     ctx.weapons.targetHitHook = null;
-    disableMotionActions(ctx);
+    disableGrenades(ctx);
     ctx.ui.showHud(false);
   }
 }
@@ -342,7 +321,7 @@ export class Parkour implements GameMode {
 
     this.highlight();
     ctx.ui.showHud(true);
-    enableMotionActions(ctx);
+    enableGrenades(ctx);
   }
 
   // 現在のチェックポイントを明るく、通過済みを薄く、未到達を中間の明るさにする
@@ -365,7 +344,6 @@ export class Parkour implements GameMode {
   update(ctx: GameContext, dt: number, now: number): void {
     if (this.finished) return;
     ctx.player.getEyePosition(this.eye);
-    updateMotionActions(ctx);
 
     const cur = this.points[this.index];
     cur.mesh.rotation.y += dt * 1.5;
@@ -412,7 +390,7 @@ export class Parkour implements GameMode {
     }
     this.platforms = [];
     this.points = [];
-    disableMotionActions(ctx);
+    disableGrenades(ctx);
     ctx.ui.showHud(false);
   }
 }
@@ -439,9 +417,6 @@ type WaveEnemy = {
   shielded: boolean;
   nextShot: number; // 遠距離型が次に撃てる時刻
   flying: boolean;
-  knockback: number; // ノックバック残り時間（秒）。0より大きい間は吹き飛び中。
-  kbx: number; // ノックバックの向きX（正規化）
-  kbz: number; // ノックバックの向きZ（正規化）
 };
 // 標準：バランス型（オレンジ）
 const WAVE_STANDARD: WaveEnemyType = {
@@ -527,7 +502,7 @@ const WAVE_BOSS: WaveEnemyType = {
 
 // 四方から迫る敵を撃って倒し、波をしのいで生き延びる。
 // 敵に触れられると体力が減り、0になると終了。波が進むほど数と速さが増す。
-export class WaveSurvival implements GameMode {
+export class WaveSurvival implements GameMode, MeleeTargetProvider {
   id = "wave";
   label = "ウェーブ・サバイバル";
   description = "四方から迫る敵を撃ち、波をしのいで生き延びる。被弾で体力が減る。";
@@ -540,17 +515,6 @@ export class WaveSurvival implements GameMode {
   private alive = false;
   private eye = new THREE.Vector3();
   private nextContactTime = 0; // 接触ダメージの間隔管理（秒）
-  private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
-  private nextKnifeTime = 0; // ナイフ斬りのクールダウン管理（秒）
-
-  // 処刑（バックスタブ）演出の状態
-  private finishing = false; // 処刑演出の最中か
-  private finishT = 0; // 演出の経過時間（秒）
-  private finishTarget: WaveEnemy | null = null; // 処刑中の対象
-  private finishStruck = false; // ヒット確定（体力を0にする処理）を済ませたか
-  private finishBaseY = 0; // 対象の崩れ落ち開始時のy座標
-  private readonly FINISH_DUR = 0.75; // 演出全体の長さ（秒）
-  private readonly FINISH_STRIKE_AT = 0.3; // この時刻でヒット確定（秒）
 
   enter(ctx: GameContext, now: number): void {
     this.ctx = ctx;
@@ -560,12 +524,7 @@ export class WaveSurvival implements GameMode {
     this.kills = 0;
     this.alive = true;
     this.nextContactTime = now;
-    this.nextKickTime = now;
-    this.nextKnifeTime = now;
-    this.finishing = false;
-    this.finishT = 0;
-    this.finishTarget = null;
-    this.finishStruck = false;
+    ctx.meleeProvider = this;
 
     ctx.health.reset(100);
     ctx.health.show();
@@ -634,9 +593,6 @@ export class WaveSurvival implements GameMode {
       shielded: type.shielded,
       nextShot: performance.now() / 1000 + 1 + Math.random() * 1.5,
       flying: type.flying ?? false,
-      knockback: 0,
-      kbx: 0,
-      kbz: 0,
     });
   }
 
@@ -712,95 +668,23 @@ export class WaveSurvival implements GameMode {
     this.pickups.push(pk);
   }
 
-  // 蹴り：プレイヤーの周囲2.5m以内の敵を、外向きに弾き飛ばしてダメージを与える。
-  // 囲まれたときに距離を作るための手段。撃破に至ればアイテムも落ちる。
-  private doKick(): void {
-    if (!this.ctx) return;
-    let hitAny = false;
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const e = this.enemies[i];
-      const dx = e.unit.group.position.x - this.eye.x;
-      const dz = e.unit.group.position.z - this.eye.z;
-      const d = Math.hypot(dx, dz);
-      if (d > 2.5) continue;
-      // プレイヤーから外向きへ、時間をかけて滑らかに吹き飛ばす
-      const nx = d > 0.001 ? dx / d : 0;
-      const nz = d > 0.001 ? dz / d : 1;
-      e.knockback = 0.3;
-      e.kbx = nx;
-      e.kbz = nz;
-      e.hp -= 20;
-      hitAny = true;
-      if (e.hp <= 0) this.removeEnemy(e, true);
-    }
-    // 足のモーションを出す。敵に当たっていれば命中マーカーも点滅させる。
-    this.ctx.weapons.kick(hitAny);
-  }
-
-  // ナイフ入力時に、処刑できる対象（2m以内で最も近い1体）を探す。なければ null。
-  private findFinisherTarget(): WaveEnemy | null {
-    let best: WaveEnemy | null = null;
-    let bestD = 2.0;
-    for (const e of this.enemies) {
-      const dx = e.unit.group.position.x - this.eye.x;
-      const dz = e.unit.group.position.z - this.eye.z;
-      const d = Math.hypot(dx, dz);
-      if (d <= bestD) {
-        bestD = d;
-        best = e;
-      }
-    }
-    return best;
-  }
-
-  // 処刑（突き刺し）演出を開始する。対象を1体ロックし、演出のあいだ通常更新から外す。
-  private startFinisher(target: WaveEnemy, now: number): void {
-    if (!this.ctx) return;
-    this.finishing = true;
-    this.finishT = 0;
-    this.finishTarget = target;
-    this.finishStruck = false;
-    this.finishBaseY = target.unit.group.position.y;
-    this.nextKnifeTime = now + this.FINISH_DUR + 0.1;
-    if (this.ctx.knifeView) this.ctx.knifeView.triggerFinish();
-    this.ctx.weapons.triggerFinishHide(this.FINISH_DUR);
-  }
-
-  // 処刑演出を1フレーム進める。ヒット前は対象を正面へ向け、ヒット確定後は
-  // 前のめりに倒して少し沈め、演出が終わったら正式に取り除く（撃破扱い）。
-  private updateFinisher(dt: number): void {
-    if (!this.finishing || !this.finishTarget) return;
-    const e = this.finishTarget;
-    this.finishT += dt;
-
-    // ヒット前は対象をプレイヤーの方へ向ける（掴んでいる見た目）。ヒット後は向きを固定。
-    if (!this.finishStruck) {
-      const dx = this.eye.x - e.unit.group.position.x;
-      const dz = this.eye.z - e.unit.group.position.z;
-      e.unit.faceTo(dx, dz);
-    }
-
-    // ヒット確定（1回だけ）：体力を0にする
-    if (!this.finishStruck && this.finishT >= this.FINISH_STRIKE_AT) {
-      this.finishStruck = true;
-      e.hp = 0;
-    }
-
-    // ヒット後は前のめりに倒れて少し沈む
-    if (this.finishStruck) {
-      const span = this.FINISH_DUR - this.FINISH_STRIKE_AT;
-      const fall =
-        span > 0 ? Math.min(1, (this.finishT - this.FINISH_STRIKE_AT) / span) : 1;
-      e.unit.group.rotation.x = -fall * (Math.PI / 2) * 0.9;
-      e.unit.group.position.y = this.finishBaseY - fall * 0.3;
-    }
-
-    // 演出終了：対象を取り除く
-    if (this.finishT >= this.FINISH_DUR) {
-      this.finishing = false;
-      this.finishTarget = null;
-      this.removeEnemy(e, true);
-    }
+  // 近接システムへ、現在の敵を共通の対象として公開する。撃破・吹き飛ばしは敵側へ委譲する。
+  getMeleeTargets(): MeleeTarget[] {
+    return this.enemies.map((e) => ({
+      position: e.unit.group.position,
+      isAlive: (): boolean => this.enemies.indexOf(e) >= 0,
+      applyDamage: (damage: number): boolean => {
+        e.hp -= damage;
+        if (e.hp <= 0) {
+          this.removeEnemy(e, true);
+          return true;
+        }
+        return false;
+      },
+      applyKnockback: (vx: number, vz: number): void => {
+        e.unit.applyKnockback(vx, vz);
+      },
+    }));
   }
 
   // 手榴弾の爆発：中心から半径内の敵に、近いほど大きいダメージを与える。
@@ -822,56 +706,20 @@ export class WaveSurvival implements GameMode {
     if (!this.alive) return;
     ctx.player.getEyePosition(this.eye);
 
-    // 処刑演出の最中は、その進行だけを行い、他の操作・敵更新は止める
-    if (this.finishing) {
-      this.updateFinisher(dt);
-    }
-
-    // 蹴り：クールダウンが明けていて入力があれば、周囲の近い敵を弾く（処刑中は不可）
-    if (!this.finishing && ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
-      this.nextKickTime = now + 0.8;
-      if (ctx.kickView) ctx.kickView.trigger();
-      ctx.weapons.triggerKickDip();
-      this.doKick();
-    }
-
-    // ナイフ：2m以内に対象がいれば処刑演出、いなければ通常の空振り斬り（処刑中は不可）
-    if (!this.finishing && ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
-      const target = this.findFinisherTarget();
-      if (target) {
-        this.startFinisher(target, now);
-      } else {
-        this.nextKnifeTime = now + 0.5;
-        if (ctx.knifeView) ctx.knifeView.trigger();
-        ctx.weapons.triggerKnifeHide();
-      }
-    }
-
     let contacting = false;
     let playerDamaged = false;
 
     // 撤去が起きても安全なよう、後ろから回す
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      // 処刑中の対象は専用処理（updateFinisher）に任せ、通常のAI更新から外す
-      if (this.finishing && e === this.finishTarget) continue;
       const dx = this.eye.x - e.unit.group.position.x;
       const dz = this.eye.z - e.unit.group.position.z;
       const d = Math.hypot(dx, dz);
       e.unit.faceTo(dx, dz);
 
-      // ノックバック中はAIを止めて、後方へ滑らかに吹き飛ばす
-      if (e.knockback > 0) {
-        // 残り時間に応じて速度を落とし、勢いよく飛んで減速して止まる
-        const kbSpeed = 18 * (e.knockback / 0.3);
-        e.knockback -= dt;
-        e.unit.moveToward(
-          e.unit.group.position.x + e.kbx,
-          e.unit.group.position.z + e.kbz,
-          kbSpeed,
-          dt,
-          ctx.stage.colliders
-        );
+      // よろけ中はAIを止めて、後方へ吹き飛ばす（速度ベースで減速）
+      if (e.unit.staggerTimer > 0) {
+        e.unit.updateKnockback(dt, ctx.stage.colliders, 30);
         e.unit.update(dt, "idle");
         continue;
       }
@@ -992,9 +840,7 @@ export class WaveSurvival implements GameMode {
   }
 
   exit(ctx: GameContext): void {
-    // 処刑演出が途中でも状態を片付ける（対象は下のループで撤去される）
-    this.finishing = false;
-    this.finishTarget = null;
+    ctx.meleeProvider = null;
     // 敵をすべて撤去し、射撃側の登録も元へ戻す
     for (const e of this.enemies) {
       ctx.scene.remove(e.unit.group);
@@ -1030,12 +876,9 @@ type BotEntry = {
   unit: EnemyUnit;
   hp: number;
   nextShot: number;
-  knockback: number; // ノックバック残り時間（秒）
-  kbx: number; // ノックバックの向きX
-  kbz: number; // ノックバックの向きZ
 };
 
-export class BotDeathmatch implements GameMode {
+export class BotDeathmatch implements GameMode, MeleeTargetProvider {
   id = "botdm";
   label = "ボット・デスマッチ";
   description = "撃ち返すボットと戦い、制限時間内のキル数を競う。やられても復活する。";
@@ -1049,18 +892,6 @@ export class BotDeathmatch implements GameMode {
   private alive = false;
   private playerDead = false;
   private playerRespawnAt = 0;
-  private nextKickTime = 0; // 蹴りのクールダウン管理（秒）
-  private nextKnifeTime = 0; // ナイフ斬りのクールダウン管理（秒）
-
-  // 処刑（バックスタブ）演出の状態
-  private finishing = false; // 処刑演出の最中か
-  private finishT = 0; // 演出の経過時間（秒）
-  private finishTarget: BotEntry | null = null; // 処刑中の対象
-  private finishStruck = false; // ヒット確定を済ませたか
-  private finishBaseY = 0; // 対象の崩れ落ち開始時のy座標
-  private readonly FINISH_DUR = 0.75; // 演出全体の長さ（秒）
-  private readonly FINISH_STRIKE_AT = 0.3; // この時刻でヒット確定（秒）
-
   private eye = new THREE.Vector3();
 
   // 壁越し射撃を防ぐ視線判定の作業用
@@ -1086,13 +917,8 @@ export class BotDeathmatch implements GameMode {
     this.alive = true;
     this.playerDead = false;
     this.playerRespawnAt = 0;
-    this.nextKickTime = now;
-    this.nextKnifeTime = now;
-    this.finishing = false;
-    this.finishT = 0;
-    this.finishTarget = null;
-    this.finishStruck = false;
     this.endTime = now + this.DURATION;
+    ctx.meleeProvider = this;
 
     ctx.health.reset(100);
     ctx.health.show();
@@ -1134,9 +960,6 @@ export class BotDeathmatch implements GameMode {
       unit,
       hp: this.BOT_HP,
       nextShot: now + 1 + Math.random() * 1.5,
-      knockback: 0,
-      kbx: 0,
-      kbz: 0,
     });
   }
 
@@ -1190,50 +1013,15 @@ export class BotDeathmatch implements GameMode {
 
     ctx.player.getEyePosition(this.eye);
 
-    // 処刑演出の最中は、その進行だけを行い、他の操作・ボット更新は止める
-    if (this.finishing) {
-      this.updateFinisher(dt, now);
-    }
-
-    // 蹴り：クールダウンが明けていて入力があれば、近いボットを弾く（処刑中は不可）
-    if (!this.finishing && ctx.frameInput && ctx.frameInput.kickPressed && now >= this.nextKickTime) {
-      this.nextKickTime = now + 0.8;
-      if (ctx.kickView) ctx.kickView.trigger();
-      ctx.weapons.triggerKickDip();
-      this.doKickBots(now);
-    }
-
-    // ナイフ：2m以内に対象がいれば処刑演出、いなければ通常の空振り斬り（処刑中は不可）
-    if (!this.finishing && ctx.frameInput && ctx.frameInput.knifePressed && now >= this.nextKnifeTime) {
-      const target = this.findFinisherTarget();
-      if (target) {
-        this.startFinisher(target, now);
-      } else {
-        this.nextKnifeTime = now + 0.5;
-        if (ctx.knifeView) ctx.knifeView.trigger();
-        ctx.weapons.triggerKnifeHide();
-      }
-    }
-
     for (const b of this.bots) {
-      // 処刑中の対象は専用処理（updateFinisher）に任せ、通常のAI更新から外す
-      if (this.finishing && b === this.finishTarget) continue;
       const dx = this.eye.x - b.unit.group.position.x;
       const dz = this.eye.z - b.unit.group.position.z;
       const d = Math.hypot(dx, dz);
       b.unit.faceTo(dx, dz);
 
-      // ノックバック中はAIを止めて、後方へ滑らかに吹き飛ばす
-      if (b.knockback > 0) {
-        const kbSpeed = 18 * (b.knockback / 0.3);
-        b.knockback -= dt;
-        b.unit.moveToward(
-          b.unit.group.position.x + b.kbx,
-          b.unit.group.position.z + b.kbz,
-          kbSpeed,
-          dt,
-          ctx.stage.colliders
-        );
+      // よろけ中はAIを止めて、後方へ吹き飛ばす（速度ベースで減速）
+      if (b.unit.staggerTimer > 0) {
+        b.unit.updateKnockback(dt, ctx.stage.colliders, 30);
         b.unit.update(dt, "idle");
         continue;
       }
@@ -1311,92 +1099,24 @@ export class BotDeathmatch implements GameMode {
     return true;
   }
 
-  // 蹴り：プレイヤーの周囲2.5m以内のボットを、後方へ吹き飛ばしてダメージを与える。
-  private doKickBots(now: number): void {
-    if (!this.ctx) return;
-    let hitAny = false;
-    for (let i = this.bots.length - 1; i >= 0; i--) {
-      const b = this.bots[i];
-      const dx = b.unit.group.position.x - this.eye.x;
-      const dz = b.unit.group.position.z - this.eye.z;
-      const d = Math.hypot(dx, dz);
-      if (d > 2.5) continue;
-      const nx = d > 0.001 ? dx / d : 0;
-      const nz = d > 0.001 ? dz / d : 1;
-      b.knockback = 0.3;
-      b.kbx = nx;
-      b.kbz = nz;
-      b.hp -= 40;
-      hitAny = true;
-      if (b.hp <= 0) this.killBot(b, now);
-    }
-    this.ctx.weapons.kick(hitAny);
-  }
-
-  // ナイフ入力時に、処刑できる対象（2m以内で最も近い1体）を探す。なければ null。
-  private findFinisherTarget(): BotEntry | null {
-    let best: BotEntry | null = null;
-    let bestD = 2.0;
-    for (const b of this.bots) {
-      const dx = b.unit.group.position.x - this.eye.x;
-      const dz = b.unit.group.position.z - this.eye.z;
-      const d = Math.hypot(dx, dz);
-      if (d <= bestD) {
-        bestD = d;
-        best = b;
-      }
-    }
-    return best;
-  }
-
-  // 処刑（突き刺し）演出を開始する。対象を1体ロックし、演出のあいだ通常更新から外す。
-  private startFinisher(target: BotEntry, now: number): void {
-    if (!this.ctx) return;
-    this.finishing = true;
-    this.finishT = 0;
-    this.finishTarget = target;
-    this.finishStruck = false;
-    this.finishBaseY = target.unit.group.position.y;
-    this.nextKnifeTime = now + this.FINISH_DUR + 0.1;
-    if (this.ctx.knifeView) this.ctx.knifeView.triggerFinish();
-    this.ctx.weapons.triggerFinishHide(this.FINISH_DUR);
-  }
-
-  // 処刑演出を1フレーム進める。ヒット前は対象を正面へ向け、ヒット確定後は
-  // 前のめりに倒して少し沈め、演出が終わったら正式に取り除く（撃破扱い）。
-  private updateFinisher(dt: number, now: number): void {
-    if (!this.finishing || !this.finishTarget) return;
-    const b = this.finishTarget;
-    this.finishT += dt;
-
-    // ヒット前は対象をプレイヤーの方へ向ける。ヒット後は向きを固定。
-    if (!this.finishStruck) {
-      const dx = this.eye.x - b.unit.group.position.x;
-      const dz = this.eye.z - b.unit.group.position.z;
-      b.unit.faceTo(dx, dz);
-    }
-
-    // ヒット確定（1回だけ）：体力を0にする
-    if (!this.finishStruck && this.finishT >= this.FINISH_STRIKE_AT) {
-      this.finishStruck = true;
-      b.hp = 0;
-    }
-
-    // ヒット後は前のめりに倒れて少し沈む
-    if (this.finishStruck) {
-      const span = this.FINISH_DUR - this.FINISH_STRIKE_AT;
-      const fall =
-        span > 0 ? Math.min(1, (this.finishT - this.FINISH_STRIKE_AT) / span) : 1;
-      b.unit.group.rotation.x = -fall * (Math.PI / 2) * 0.9;
-      b.unit.group.position.y = this.finishBaseY - fall * 0.3;
-    }
-
-    // 演出終了：対象を取り除く
-    if (this.finishT >= this.FINISH_DUR) {
-      this.finishing = false;
-      this.finishTarget = null;
-      this.killBot(b, now);
-    }
+  // 近接システムへ、現在のボットを共通の対象として公開する。
+  getMeleeTargets(): MeleeTarget[] {
+    const now = performance.now() / 1000;
+    return this.bots.map((b) => ({
+      position: b.unit.group.position,
+      isAlive: (): boolean => this.bots.indexOf(b) >= 0,
+      applyDamage: (damage: number): boolean => {
+        b.hp -= damage;
+        if (b.hp <= 0) {
+          this.killBot(b, now);
+          return true;
+        }
+        return false;
+      },
+      applyKnockback: (vx: number, vz: number): void => {
+        b.unit.applyKnockback(vx, vz);
+      },
+    }));
   }
 
   // 手榴弾の爆発：中心から半径内のボットに、近いほど大きいダメージを与える。
@@ -1425,9 +1145,7 @@ export class BotDeathmatch implements GameMode {
   }
 
   exit(ctx: GameContext): void {
-    // 処刑演出が途中でも状態を片付ける（対象は下のループで撤去される）
-    this.finishing = false;
-    this.finishTarget = null;
+    ctx.meleeProvider = null;
     for (const b of this.bots) {
       ctx.scene.remove(b.unit.group);
       b.unit.dispose();

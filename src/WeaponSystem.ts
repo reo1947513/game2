@@ -46,11 +46,10 @@ export class WeaponSystem {
   // リロード動作の進み具合（0=通常、1=最も大きく動いた瞬間）。見た目だけに使います。
   private reloadAnim = 0;
 
-  // 蹴り時に武器を一瞬下げる量（0〜1）
-  private kickDip = 0;
-
-  // ナイフ斬りのあいだ銃を消す残り時間（秒）。0より大きい間は武器モデルを非表示にする。
-  private hideTimer = 0;
+  // 近接（ナイフ・キック）発動中は銃を消し、発射を止める。
+  private meleeActive = false;
+  // 近接ランジ中は速度連動FOVへ追加のズームアウトを与える。
+  private meleeLunging = false;
 
   private raycaster = new THREE.Raycaster();
   private shootables: THREE.Object3D[] = [];
@@ -109,25 +108,14 @@ export class WeaponSystem {
     this.hud.setAmmo(w.mag, w.reserve);
   }
 
-  // 蹴りが敵に当たったとき命中マーカーを点滅させる（脚の演出は KickView 側が担当）。
-  kick(hit: boolean): void {
-    if (hit) this.hud.flashHitmarker();
+  // 近接の発動・終了に合わせて銃を消す/戻す。発動中は射撃も止める。
+  setMeleeActive(active: boolean): void {
+    this.meleeActive = active;
   }
 
-  // 蹴りに合わせて武器を一瞬下げる。蹴り発動時に呼ぶ（銃は消さない）。
-  triggerKickDip(): void {
-    this.kickDip = 1;
-  }
-
-  // ナイフ斬りのあいだ銃を消す。ナイフ発動時に呼ぶ。
-  triggerKnifeHide(): void {
-    this.hideTimer = 0.28;
-  }
-
-  // 処刑（突き刺し）演出のあいだ銃を消す。演出の長さ（秒）を渡す。
-  // すでに設定済みの非表示時間より長いときだけ延長する。
-  triggerFinishHide(duration: number): void {
-    this.hideTimer = Math.max(this.hideTimer, duration);
+  // 近接ランジ中かどうかを伝える（速度連動FOVに反映する）。
+  setMeleeLunging(lunging: boolean): void {
+    this.meleeLunging = lunging;
   }
 
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
@@ -387,17 +375,13 @@ export class WeaponSystem {
     this.handleFire(input, playerSpeed, now);
 
     this.updateTransforms(dt, input, playerSpeed);
-    this.updateFov();
+    this.updateFov(dt, playerSpeed);
     this.updateMuzzle(dt);
     this.updateHud(playerSpeed);
 
     // 発砲拡散と見た目反動を時間で戻す
     this.fireBloom = Math.max(0, this.fireBloom - dt * 0.6);
     this.recoilOffset = Math.max(0, this.recoilOffset - dt * 1.2);
-    // 蹴りで下げた武器を戻す（約0.3秒で戻る）
-    this.kickDip = Math.max(0, this.kickDip - dt * 3.2);
-    // ナイフ斬りで消した銃を戻す
-    this.hideTimer = Math.max(0, this.hideTimer - dt);
     this.prevFiring = input.firing;
   }
 
@@ -458,6 +442,8 @@ export class WeaponSystem {
   private handleFire(input: InputState, playerSpeed: number, now: number): void {
     const w = this.weapons.get(this.current)!;
     if (this.reloading) return;
+    // 近接の最中は射撃できない
+    if (this.meleeActive) return;
 
     // フルオートは保持で連射、単発はトリガーを引き直す必要がある
     const triggerOk = w.spec.automatic ? input.firing : input.firing && !this.prevFiring;
@@ -578,10 +564,6 @@ export class WeaponSystem {
     pos.z += r * 0.06;
     pos.x += r * 0.02;
 
-    // 蹴り動作：武器を一瞬下げて手前へ引く
-    pos.y -= this.kickDip * 0.22;
-    pos.z += this.kickDip * 0.12;
-
     w.model.position.copy(pos);
 
     // ADS中は武器の傾きを正面に寄せる。反動とリロードの傾きも合算する。
@@ -593,18 +575,21 @@ export class WeaponSystem {
 
     // 覗き込み時、スナイパーは銃モデルがカメラ至近で視界を塞ぐため隠す（実質スコープ視点）。
     // アサルトなど scope=false の武器は通常どおり表示する。
-    // さらにナイフ斬り中（hideTimer > 0）は銃を消す。
+    // さらに近接（ナイフ・キック）の最中は銃を消す。
     w.model.visible =
-      !(w.spec.scope && this.adsProgress > 0.5) && this.hideTimer <= 0;
+      !(w.spec.scope && this.adsProgress > 0.5) && !this.meleeActive;
   }
 
-  // 視野角の更新（ADSで拡大）
-  private updateFov(): void {
-    const target = this.baseFov + (this.spec.adsFov - this.baseFov) * this.adsProgress;
-    if (Math.abs(this.camera.fov - target) > 0.01) {
-      this.camera.fov = target;
-      this.camera.updateProjectionMatrix();
-    }
+  // 視野角の更新。腰だめ時は速度（とランジ）でズームアウトし、ADSで拡大する。
+  private updateFov(dt: number, playerSpeed: number): void {
+    // 速度連動：基準速度6.2 m/sを超えたぶんだけ、最大+12まで視野を広げる。
+    const speedBonus = THREE.MathUtils.clamp((playerSpeed - 6.2) * 1.4, 0, 12);
+    const lungeBonus = this.meleeLunging ? 5 : 0;
+    const hipFov = this.baseFov + speedBonus + lungeBonus;
+    // ADSが進むほど adsFov へ寄せる（ADS中は速度のズームアウトは自然に打ち消される）。
+    const target = hipFov + (this.spec.adsFov - hipFov) * this.adsProgress;
+    this.camera.fov += (target - this.camera.fov) * Math.min(1, dt * 8);
+    this.camera.updateProjectionMatrix();
   }
 
   private updateMuzzle(dt: number): void {

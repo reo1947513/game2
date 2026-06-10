@@ -8,9 +8,12 @@ import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
-import { KickView } from "./KickView";
-import { KnifeView } from "./KnifeView";
 import { GrenadeSystem } from "./GrenadeSystem";
+import { KnifeViewmodel } from "./combat/KnifeViewmodel";
+import { KickViewmodel } from "./combat/KickViewmodel";
+import { SlashTrail } from "./combat/SlashTrail";
+import { SoundSystem } from "./SoundSystem";
+import { MeleeSystem } from "./combat/MeleeSystem";
 
 // すべてのシステムを組み合わせて毎フレーム動かす中心クラスです。
 export class Game {
@@ -22,8 +25,11 @@ export class Game {
   private stage: Stage;
   private player: PlayerController;
   private weapons: WeaponSystem;
-  private kickView: KickView;
-  private knifeView: KnifeView;
+  private knifeVm: KnifeViewmodel;
+  private kickVm: KickViewmodel;
+  private slashTrail: SlashTrail;
+  private sound: SoundSystem;
+  private melee: MeleeSystem;
   private grenades: GrenadeSystem;
   private hud: HUD;
   private touch: TouchControls;
@@ -67,8 +73,20 @@ export class Game {
     this.player = new PlayerController(this.stage.colliders);
     this.hud = new HUD();
     this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud);
-    this.kickView = new KickView(this.camera);
-    this.knifeView = new KnifeView(this.camera);
+    this.knifeVm = new KnifeViewmodel(this.camera);
+    this.kickVm = new KickViewmodel(this.camera);
+    this.slashTrail = new SlashTrail(this.scene);
+    this.sound = new SoundSystem();
+    this.melee = new MeleeSystem(
+      this.camera,
+      this.player,
+      this.weapons,
+      this.hud,
+      this.sound,
+      this.knifeVm,
+      this.kickVm,
+      this.slashTrail
+    );
     this.grenades = new GrenadeSystem(this.scene);
 
     // タッチ操作レイヤー（スマホ・タブレット用）。一時停止メニューから設定を開く。
@@ -89,9 +107,8 @@ export class Game {
       player: this.player,
       health: this.health,
       finish: (lines: string[]) => this.onModeFinish(lines),
-      kickView: this.kickView,
-      knifeView: this.knifeView,
       grenadeSystem: this.grenades,
+      meleeProvider: null,
     };
 
     // Escなどでポインタロックが外れたら、プレイ中ならモード選択に戻す
@@ -210,6 +227,16 @@ export class Game {
       inputState.jumpPressed = false;
     }
 
+    // 近接：対象提供者を現在モードから受け取り、入力を処理（発動・ランジ計算・SE）する。
+    // プレイヤー更新の前に行い、ランジ速度を移動へ反映させる。
+    this.melee.setProvider(this.ctx.meleeProvider ?? null);
+    this.melee.handleInput(inputState, now);
+    this.player.setLungeOverride(
+      this.melee.lungeActive(),
+      this.melee.lungeVelX(),
+      this.melee.lungeVelZ()
+    );
+
     // プレイヤー更新
     this.player.update(dt, inputState);
 
@@ -218,10 +245,9 @@ export class Game {
     this.camera.position.copy(this.eye);
     this.camera.rotation.set(this.input.getPitch(), this.input.getYaw(), 0, "YXZ");
 
-    // 武器・的・HUD更新
+    // 武器更新（速度連動FOVにランジ状態を反映）
+    this.weapons.setMeleeLunging(this.melee.lungeActive());
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
-    this.kickView.update(dt);
-    this.knifeView.update(dt);
     // 手榴弾（長押しで軌道表示、離すと投擲）。向きはカメラ正面。
     const camDir = new THREE.Vector3();
     this.camera.getWorldDirection(camDir);
@@ -234,13 +260,15 @@ export class Game {
       this.stage.colliders
     );
     this.stage.updateTargets(now);
-    // モードが蹴りや投擲の判定に使えるよう、その瞬間の入力を渡す
-    this.ctx.frameInput = inputState;
     // 現在のモードの更新（スコア・残り時間・的の動き・終了判定など）
     this.modeManager.update(this.ctx, dt, now);
     this.hud.update(dt);
     this.hud.setStance(this.player.stance);
     this.hud.setSpeed(this.player.horizontalSpeed);
+
+    // 近接の毎フレーム進行。カメラ確定後に、アニメ・命中・トレイル・シェイク・
+    // カメラリーンを適用する（描画の直前に置き、揺れを最後に反映させる）。
+    this.melee.update(dt, now);
 
     this.renderer.render(this.scene, this.camera);
   };

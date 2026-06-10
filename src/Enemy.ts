@@ -29,6 +29,11 @@ export class EnemyUnit {
   private phase = 0; // 歩行の位相
   private attackPhase = 0; // 攻撃の位相
 
+  // 近接の蹴りで吹き飛ばされている間の状態。
+  private kbVel = new THREE.Vector3(); // ノックバックの速度（m/s、水平）
+  staggerTimer = 0; // よろけ残り時間（秒）。0より大きい間は移動・攻撃AIを止める。
+  private tiltAmt = 0; // 仰け反り量（rotation.x = -tiltAmt で後傾させる）
+
   private bodyMat: THREE.MeshStandardMaterial;
   private eyeMat: THREE.MeshStandardMaterial;
   private hitMat: THREE.MeshBasicMaterial;
@@ -232,6 +237,42 @@ export class EnemyUnit {
       this.armL.rotation.x *= 0.85;
       this.armR.rotation.x *= 0.85;
     }
+  }
+
+  // ノックバックを与える。水平方向の初速（m/s）で、よろけと仰け反りも同時に開始する。
+  applyKnockback(vx: number, vz: number): void {
+    this.kbVel.set(vx, 0, vz);
+    this.staggerTimer = 0.7;
+    this.tiltAmt = 0.55;
+  }
+
+  // よろけ中の毎フレーム処理。後方へ流れつつ減速し、仰け反りを戻す。
+  // staggerTimer が 0 より大きい間だけ呼ぶこと。bound はステージのおおまかな境界（±）。
+  updateKnockback(dt: number, colliders: THREE.Box3[], bound = 30): void {
+    // 水平に流す（軸ごとに衝突で押し戻す）
+    const sx = this.kbVel.x * dt;
+    this.group.position.x += sx;
+    if (this.hitsCollider(colliders)) this.group.position.x -= sx;
+    const sz = this.kbVel.z * dt;
+    this.group.position.z += sz;
+    if (this.hitsCollider(colliders)) this.group.position.z -= sz;
+
+    // ステージ外へ出ないよう収める
+    const lim = bound - this.radius * this.scaleFactor;
+    this.group.position.x = Math.max(-lim, Math.min(lim, this.group.position.x));
+    this.group.position.z = Math.max(-lim, Math.min(lim, this.group.position.z));
+
+    // 勢いを減衰させる（ほぼ止まったら0にする）
+    if (this.kbVel.lengthSq() > 0.01) {
+      this.kbVel.multiplyScalar(Math.max(0, 1 - 6 * dt));
+    } else {
+      this.kbVel.set(0, 0, 0);
+    }
+
+    // よろけ・仰け反りの減衰。faceTo は rotation.y のみを書くため x はここで保てる。
+    this.staggerTimer = Math.max(0, this.staggerTimer - dt);
+    this.tiltAmt = Math.max(0, this.tiltAmt - 1.4 * dt);
+    this.group.rotation.x = -this.tiltAmt;
   }
 
   // メッシュ類を破棄する

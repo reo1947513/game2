@@ -40,6 +40,7 @@ export class MeleeSystem {
   private lungeVz = 0;
   private lungeTimer = 0; // 自動踏み込みの残り時間（秒）
   private shakeAmt = 0; // 画面シェイクの強さ
+  private kickLean = 0; // キックの体重移動（カメラリーン）量。適用は applyCameraShake。
 
   // 現在のモードが公開する近接対象。敵のいないモードでは null。
   private provider: MeleeTargetProvider | null = null;
@@ -79,14 +80,40 @@ export class MeleeSystem {
   }
 
   // 入力処理。プレイヤー更新の前に呼び、発動とランジ速度を確定させる。
-  handleInput(input: InputState, now: number): void {
+  handleInput(input: InputState, now: number, dt: number): void {
     void now;
+    // 前フレーム分のランジ時間をここで消化する。プレイヤーが setLungeOverride で
+    // 読む前に減算することで、ランジが1フレーム余分に適用されるずれを防ぐ。
+    if (this.lungeTimer > 0) {
+      this.lungeTimer -= dt;
+      if (this.lungeTimer < 0) this.lungeTimer = 0;
+    }
     if (this.meleeTimer > 0) return; // 発動中の再発動・射撃は不可
     if (input.knifePressed) {
       this.startMelee("knife", input);
     } else if (input.kickPressed) {
       this.startMelee("kick", input);
     }
+  }
+
+  // 近接の状態を完全に初期化する（ポーズ・モード切替・戦闘中の死亡で呼ぶ）。
+  // 進行中のスイング・ランジ・ビューモデル・トレイル・シェイクをすべて畳む。
+  cancel(): void {
+    if (this.meleeType === "knife") {
+      this.knifeVm.end();
+    } else if (this.meleeType === "kick") {
+      this.kickVm.end();
+    }
+    this.trail.clear();
+    this.meleeType = null;
+    this.meleeTimer = 0;
+    this.meleeHitDone = false;
+    this.lungeTimer = 0;
+    this.lungeVx = 0;
+    this.lungeVz = 0;
+    this.shakeAmt = 0;
+    this.kickLean = 0;
+    this.weapons.setMeleeActive(false);
   }
 
   private startMelee(type: MeleeType, input: InputState): void {
@@ -121,13 +148,16 @@ export class MeleeSystem {
         const dy = t.position.y + 1.0 - this.eyeTmp.y;
         const dz = t.position.z - this.eyeTmp.z;
         const dist = Math.hypot(dx, dy, dz);
-        if (dist < 0.0001 || dist > lungeRange) continue;
+        if (dist < 0.0001) continue;
+        // 踏み込みの可否は命中判定と基準を合わせ、水平距離でゲートする。
+        const horiz = Math.hypot(dx, dz);
+        if (horiz > lungeRange) continue;
         const dot = (dx / dist) * this.fwd.x + (dy / dist) * this.fwd.y + (dz / dist) * this.fwd.z;
         if (dot > bestDot) {
           bestDot = dot;
           bestDx = dx;
           bestDz = dz;
-          bestHoriz = Math.hypot(dx, dz);
+          bestHoriz = horiz;
           found = true;
         }
       }
@@ -191,12 +221,8 @@ export class MeleeSystem {
         }
       }
 
-      // キックの体重移動（カメラのリーン）
-      if (this.meleeType === "kick") {
-        const ex = this.kickVm.getExtend(t);
-        this.camera.rotation.x += ex * 0.05;
-        this.camera.rotation.z += ex * -0.025;
-      }
+      // キックの体重移動（リーン）量を記録する。カメラへの適用は applyCameraShake。
+      this.kickLean = this.meleeType === "kick" ? this.kickVm.getExtend(t) : 0;
 
       // 終了処理
       if (this.meleeTimer <= 0) {
@@ -208,27 +234,38 @@ export class MeleeSystem {
           this.kickVm.end();
         }
         this.meleeType = null;
+        this.kickLean = 0;
         this.weapons.setMeleeActive(false);
       }
+    } else {
+      this.kickLean = 0;
     }
 
     // トレイルの寿命を進める（発生していなくても呼ぶ）。
     this.trail.update(dt);
 
-    // 画面シェイク（命中後に減衰）。
+    // 画面シェイクを時間で減衰させる（カメラへの適用は applyCameraShake）。
+    if (this.shakeAmt > 0.0001) {
+      this.shakeAmt *= Math.max(0, 1 - 10 * dt);
+    } else {
+      this.shakeAmt = 0;
+    }
+
+    // ランジの残り時間は handleInput の冒頭で消化するため、ここでは触れない。
+    void now;
+  }
+
+  // カメラ確定後・描画直前に Game から呼ぶ。キックのリーンと画面シェイクをカメラへ
+  // 加算する。カメラを書き換える最後の処理であることを明確にするため update から分離する。
+  applyCameraShake(): void {
+    if (this.kickLean !== 0) {
+      this.camera.rotation.x += this.kickLean * 0.05;
+      this.camera.rotation.z += this.kickLean * -0.025;
+    }
     if (this.shakeAmt > 0.0001) {
       this.camera.rotation.x += (Math.random() - 0.5) * this.shakeAmt;
       this.camera.rotation.z += (Math.random() - 0.5) * this.shakeAmt;
-      this.shakeAmt *= Math.max(0, 1 - 10 * dt);
     }
-
-    // ランジの残り時間を消化する。
-    if (this.lungeTimer > 0) {
-      this.lungeTimer -= dt;
-      if (this.lungeTimer < 0) this.lungeTimer = 0;
-    }
-
-    void now;
   }
 
   // 命中処理。前方内積0.5超かつ RANGE 以内の全生存敵に作用する。

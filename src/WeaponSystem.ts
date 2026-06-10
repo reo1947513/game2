@@ -24,6 +24,7 @@ export class WeaponSystem {
 
   private adsProgress = 0; // 0=腰だめ, 1=覗き込み完了
   private readonly baseFov = 75;
+  private fovExtra = 0; // 速度・ランジ由来の追加ズームアウト量（平滑用）
 
   private lastShotTime = -999;
   private prevFiring = false;
@@ -582,14 +583,21 @@ export class WeaponSystem {
 
   // 視野角の更新。腰だめ時は速度（とランジ）でズームアウトし、ADSで拡大する。
   private updateFov(dt: number, playerSpeed: number): void {
-    // 速度連動：基準速度6.2 m/sを超えたぶんだけ、最大+12まで視野を広げる。
+    // 速度・ランジ由来のズームアウト量だけを平滑する（急な速度変化で跳ねないように）。
+    // ADSは adsProgress 側で既に平滑されているため、ここで二重に遅延させない。
     const speedBonus = THREE.MathUtils.clamp((playerSpeed - 6.2) * 1.4, 0, 12);
     const lungeBonus = this.meleeLunging ? 5 : 0;
-    const hipFov = this.baseFov + speedBonus + lungeBonus;
+    const targetExtra = speedBonus + lungeBonus;
+    this.fovExtra += (targetExtra - this.fovExtra) * Math.min(1, dt * 8);
+
     // ADSが進むほど adsFov へ寄せる（ADS中は速度のズームアウトは自然に打ち消される）。
+    const hipFov = this.baseFov + this.fovExtra;
     const target = hipFov + (this.spec.adsFov - hipFov) * this.adsProgress;
-    this.camera.fov += (target - this.camera.fov) * Math.min(1, dt * 8);
-    this.camera.updateProjectionMatrix();
+    // 収束済みなら投影行列の再計算を省く。
+    if (Math.abs(this.camera.fov - target) > 0.01) {
+      this.camera.fov = target;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   private updateMuzzle(dt: number): void {

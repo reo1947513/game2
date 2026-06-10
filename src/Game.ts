@@ -153,6 +153,7 @@ export class Game {
   private showMenu(): void {
     this.screen = "menu";
     this.paused = true;
+    this.melee.cancel();
     this.modeManager.stop(this.ctx);
     this.ui.showMenu(
       this.modeManager.list().map((m) => ({
@@ -177,6 +178,7 @@ export class Game {
       this.input.requestLock();
     }
     const now = performance.now() / 1000;
+    this.melee.cancel();
     this.modeManager.start(id, this.ctx, now);
     this.paused = false;
   }
@@ -185,6 +187,7 @@ export class Game {
   private onModeFinish(lines: string[]): void {
     this.screen = "result";
     this.paused = true;
+    this.melee.cancel();
     this.suppressUnlockMenu = true;
     if (document.exitPointerLock) document.exitPointerLock();
     this.ui.showResult(lines, () => this.showMenu());
@@ -227,10 +230,15 @@ export class Game {
       inputState.jumpPressed = false;
     }
 
-    // 近接：対象提供者を現在モードから受け取り、入力を処理（発動・ランジ計算・SE）する。
+    // 近接：対象提供者を現在モードから受け取る。戦闘モードで死亡中は近接を完全に畳む
+    // （死亡中の発動・スコア加算・復活時のランジ引きずりを防ぐ）。それ以外は入力を処理。
     // プレイヤー更新の前に行い、ランジ速度を移動へ反映させる。
     this.melee.setProvider(this.ctx.meleeProvider ?? null);
-    this.melee.handleInput(inputState, now);
+    if (this.ctx.meleeProvider != null && this.health.isDead()) {
+      this.melee.cancel();
+    } else {
+      this.melee.handleInput(inputState, now, dt);
+    }
     this.player.setLungeOverride(
       this.melee.lungeActive(),
       this.melee.lungeVelX(),
@@ -266,9 +274,10 @@ export class Game {
     this.hud.setStance(this.player.stance);
     this.hud.setSpeed(this.player.horizontalSpeed);
 
-    // 近接の毎フレーム進行。カメラ確定後に、アニメ・命中・トレイル・シェイク・
-    // カメラリーンを適用する（描画の直前に置き、揺れを最後に反映させる）。
+    // 近接の毎フレーム進行（アニメ・命中・トレイル・シェイク量の更新）。
     this.melee.update(dt, now);
+    // カメラへのリーン・シェイク適用は最後（描画直前）にまとめて行う。
+    this.melee.applyCameraShake();
 
     this.renderer.render(this.scene, this.camera);
   };

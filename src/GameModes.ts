@@ -104,6 +104,29 @@ function disableGrenades(ctx: GameContext): void {
   }
 }
 
+// 各戦闘モードが自分の敵配列を MeleeTarget 配列として公開するための共通アダプタ。
+// 撃破時の後始末（ドロップ・スコア・復活予約）はモード固有なので kill コールバックで渡す。
+function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
+  list: T[],
+  kill: (entry: T) => void
+): MeleeTarget[] {
+  return list.map((e) => ({
+    position: e.unit.group.position,
+    isAlive: (): boolean => list.indexOf(e) >= 0,
+    applyDamage: (damage: number): boolean => {
+      e.hp -= damage;
+      if (e.hp <= 0) {
+        kill(e);
+        return true;
+      }
+      return false;
+    },
+    applyKnockback: (vx: number, vz: number): void => {
+      e.unit.applyKnockback(vx, vz);
+    },
+  }));
+}
+
 // ===== モード1：ターゲットラッシュ（制限時間内にできるだけ多く撃つ） =====
 export class TargetRush implements GameMode {
   id = "rush";
@@ -670,21 +693,7 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
 
   // 近接システムへ、現在の敵を共通の対象として公開する。撃破・吹き飛ばしは敵側へ委譲する。
   getMeleeTargets(): MeleeTarget[] {
-    return this.enemies.map((e) => ({
-      position: e.unit.group.position,
-      isAlive: (): boolean => this.enemies.indexOf(e) >= 0,
-      applyDamage: (damage: number): boolean => {
-        e.hp -= damage;
-        if (e.hp <= 0) {
-          this.removeEnemy(e, true);
-          return true;
-        }
-        return false;
-      },
-      applyKnockback: (vx: number, vz: number): void => {
-        e.unit.applyKnockback(vx, vz);
-      },
-    }));
+    return makeMeleeTargets(this.enemies, (e) => this.removeEnemy(e, true));
   }
 
   // 手榴弾の爆発：中心から半径内の敵に、近いほど大きいダメージを与える。
@@ -719,7 +728,7 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
 
       // よろけ中はAIを止めて、後方へ吹き飛ばす（速度ベースで減速）
       if (e.unit.staggerTimer > 0) {
-        e.unit.updateKnockback(dt, ctx.stage.colliders, 30);
+        e.unit.updateKnockback(dt, ctx.stage.colliders, 28);
         e.unit.update(dt, "idle");
         continue;
       }
@@ -1021,7 +1030,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
 
       // よろけ中はAIを止めて、後方へ吹き飛ばす（速度ベースで減速）
       if (b.unit.staggerTimer > 0) {
-        b.unit.updateKnockback(dt, ctx.stage.colliders, 30);
+        b.unit.updateKnockback(dt, ctx.stage.colliders, 28);
         b.unit.update(dt, "idle");
         continue;
       }
@@ -1102,21 +1111,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
   // 近接システムへ、現在のボットを共通の対象として公開する。
   getMeleeTargets(): MeleeTarget[] {
     const now = performance.now() / 1000;
-    return this.bots.map((b) => ({
-      position: b.unit.group.position,
-      isAlive: (): boolean => this.bots.indexOf(b) >= 0,
-      applyDamage: (damage: number): boolean => {
-        b.hp -= damage;
-        if (b.hp <= 0) {
-          this.killBot(b, now);
-          return true;
-        }
-        return false;
-      },
-      applyKnockback: (vx: number, vz: number): void => {
-        b.unit.applyKnockback(vx, vz);
-      },
-    }));
+    return makeMeleeTargets(this.bots, (b) => this.killBot(b, now));
   }
 
   // 手榴弾の爆発：中心から半径内のボットに、近いほど大きいダメージを与える。

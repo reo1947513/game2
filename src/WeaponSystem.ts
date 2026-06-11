@@ -51,6 +51,8 @@ export class WeaponSystem {
   private meleeActive = false;
   // 近接ランジ中は速度連動FOVへ追加のズームアウトを与える。
   private meleeLunging = false;
+  // グレネード投擲時に銃を一瞬沈める残り時間（0.3→0）。
+  private throwAnim = 0;
 
   private raycaster = new THREE.Raycaster();
   private shootables: THREE.Object3D[] = [];
@@ -117,6 +119,11 @@ export class WeaponSystem {
   // 近接ランジ中かどうかを伝える（速度連動FOVに反映する）。
   setMeleeLunging(lunging: boolean): void {
     this.meleeLunging = lunging;
+  }
+
+  // グレネード投擲の瞬間に呼ぶ。銃が一瞬沈んで戻る動きを開始する。
+  triggerThrowDip(): void {
+    this.throwAnim = 0.3;
   }
 
   // ---- 武器モデルの生成（仮の簡易モデル。用意済みテクスチャは後述の差し替え方法で適用） ----
@@ -383,6 +390,8 @@ export class WeaponSystem {
     // 発砲拡散と見た目反動を時間で戻す
     this.fireBloom = Math.max(0, this.fireBloom - dt * 0.6);
     this.recoilOffset = Math.max(0, this.recoilOffset - dt * 1.2);
+    // グレネード投擲の沈み込みを時間で戻す
+    this.throwAnim = Math.max(0, this.throwAnim - dt);
     this.prevFiring = input.firing;
   }
 
@@ -565,11 +574,18 @@ export class WeaponSystem {
     pos.z += r * 0.06;
     pos.x += r * 0.02;
 
+    // グレネード投擲：銃を一瞬沈めて戻す（0→ピーク→0の山なり）
+    const throwDip =
+      this.throwAnim > 0
+        ? Math.sin((1 - this.throwAnim / 0.3) * Math.PI) * 0.09
+        : 0;
+    pos.y -= throwDip;
+
     w.model.position.copy(pos);
 
     // ADS中は武器の傾きを正面に寄せる。反動とリロードの傾きも合算する。
     w.model.rotation.y = THREE.MathUtils.lerp(0.06, 0, this.adsProgress) + r * 0.2;
-    w.model.rotation.x = -this.recoilOffset * 1.5 + r * 0.6;
+    w.model.rotation.x = -this.recoilOffset * 1.5 + r * 0.6 - throwDip * 1.5;
     w.model.rotation.z = r * 0.35;
     // input.aiming自体は使わないが、将来の傾き調整用に参照しておく
     void input.aiming;

@@ -8,7 +8,7 @@ import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
-import { GrenadeSystem } from "./GrenadeSystem";
+import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
 import { KickViewmodel } from "./combat/KickViewmodel";
 import { SlashTrail } from "./combat/SlashTrail";
@@ -42,6 +42,7 @@ export class Game {
   private eye = new THREE.Vector3();
   private running = false;
   private paused = false;
+  private wasDead = false; // 前フレームの戦闘中死亡状態（復活検知に使う）
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -87,7 +88,17 @@ export class Game {
       this.kickVm,
       this.slashTrail
     );
-    this.grenades = new GrenadeSystem(this.scene);
+    this.health = new Health();
+    this.grenades = new GrenadeSystem(
+      this.scene,
+      this.camera,
+      this.player,
+      this.health,
+      this.weapons,
+      this.melee,
+      this.hud,
+      this.sound
+    );
 
     // タッチ操作レイヤー（スマホ・タブレット用）。一時停止メニューから設定を開く。
     this.touch = new TouchControls(this.input, {
@@ -97,7 +108,6 @@ export class Game {
 
     // モード関連（選択画面・結果画面・モード中の表示と、モードの管理）
     this.ui = new ModeUI();
-    this.health = new Health();
     this.modeManager = new ModeManager([new TargetRush(), new MovingRange(), new Parkour(), new WaveSurvival(), new BotDeathmatch()]);
     this.ctx = {
       scene: this.scene,
@@ -230,11 +240,14 @@ export class Game {
       inputState.jumpPressed = false;
     }
 
-    // 近接：対象提供者を現在モードから受け取る。戦闘モードで死亡中は近接を完全に畳む
-    // （死亡中の発動・スコア加算・復活時のランジ引きずりを防ぐ）。それ以外は入力を処理。
+    // 戦闘モード（provider あり）での死亡中は、近接・投擲を止める。
+    const inCombat = this.ctx.meleeProvider != null;
+    const dead = inCombat && this.health.isDead();
+
+    // 近接：対象提供者を現在モードから受け取り、死亡中はスイングを畳む。
     // プレイヤー更新の前に行い、ランジ速度を移動へ反映させる。
     this.melee.setProvider(this.ctx.meleeProvider ?? null);
-    if (this.ctx.meleeProvider != null && this.health.isDead()) {
+    if (dead) {
       this.melee.cancel();
     } else {
       this.melee.handleInput(inputState, now, dt);
@@ -256,17 +269,13 @@ export class Game {
     // 武器更新（速度連動FOVにランジ状態を反映）
     this.weapons.setMeleeLunging(this.melee.lungeActive());
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
-    // 手榴弾（長押しで軌道表示、離すと投擲）。向きはカメラ正面。
-    const camDir = new THREE.Vector3();
-    this.camera.getWorldDirection(camDir);
-    this.grenades.update(
-      dt,
-      inputState.grenadeHeld,
-      inputState.grenadeReleased,
-      this.eye,
-      camDir,
-      this.stage.colliders
-    );
+    // グレネード（フラグG／フラッシュC、押した瞬間に投擲）。カメラ確定後に処理する。
+    // 戦闘中の死亡→復活の瞬間に、所持・投擲物・ホワイトアウトをリセットする。
+    this.grenades.setProvider(this.ctx.meleeProvider ?? null);
+    if (this.wasDead && !dead) this.grenades.reset();
+    this.wasDead = dead;
+    this.grenades.handleInput(inputState, !dead);
+    this.grenades.update(dt, this.stage.colliders);
     this.stage.updateTargets(now);
     // 現在のモードの更新（スコア・残り時間・的の動き・終了判定など）
     this.modeManager.update(this.ctx, dt, now);

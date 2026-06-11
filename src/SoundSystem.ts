@@ -87,6 +87,65 @@ export class SoundSystem {
     noise.stop(now + 0.12);
   }
 
+  // フラググレネードの起爆音。低音の沈み込みと、こもった爆風ノイズを重ねます。
+  playExplosion(): void {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 低音の芯（ドゥンと沈む）
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(70, now);
+    osc.frequency.exponentialRampToValueAtTime(28, now + 0.4);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.9, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.52);
+
+    // 爆風のこもったノイズ（lowpassで丸める）
+    const samples = Math.floor(ctx.sampleRate * 0.35);
+    const noise = this.makeNoise(ctx, samples, 2);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 900;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.6, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    noise.connect(lp).connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + 0.37);
+  }
+
+  // フラッシュバンの起爆音。鋭い破裂と、尾を引く高周波の耳鳴りを重ねます。
+  playFlashbang(): void {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 破裂（短く鋭いノイズ）
+    const noise = this.makeNoise(ctx, 2000, 1.5);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.55, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    noise.connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + 0.14);
+
+    // 耳鳴り（高周波の固定音が尾を引く）
+    const ring = ctx.createOscillator();
+    ring.type = "sine";
+    ring.frequency.setValueAtTime(3400, now);
+    const ringGain = ctx.createGain();
+    ringGain.gain.setValueAtTime(0.18, now);
+    ringGain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+    ring.connect(ringGain).connect(ctx.destination);
+    ring.start(now);
+    ring.stop(now + 1.42);
+  }
+
   // 鈍い打撃音。周波数を変えて使い回します（ナイフ命中280、キック空振り160 など）。
   thud(freq: number): void {
     const ctx = this.ensure();

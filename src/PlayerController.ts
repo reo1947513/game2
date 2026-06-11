@@ -108,6 +108,16 @@ export class PlayerController {
     this.lungeVz = vz;
   }
 
+  // 爆風による吹き飛ばし。速度に直接加算し、接地とスライドを解除する。
+  // これによりグレネードジャンプ（足元起爆＋ジャンプで高く飛ぶ）が成立する。
+  applyExplosionImpulse(vx: number, vy: number, vz: number): void {
+    this.velocity.x += vx;
+    this.velocity.y += vy;
+    this.velocity.z += vz;
+    this.grounded = false;
+    this.endSlide();
+  }
+
   // カメラに渡す目線のワールド座標
   getEyePosition(out: THREE.Vector3): THREE.Vector3 {
     return out.set(

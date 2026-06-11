@@ -6,7 +6,7 @@ import { PlayerController } from "./PlayerController";
 import { Health } from "./Health";
 import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
-import { GrenadeSystem } from "./GrenadeSystem";
+import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { MeleeTarget, MeleeTargetProvider } from "./combat/MeleeTarget";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
@@ -19,7 +19,7 @@ export interface GameContext {
   health: Health;
   // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
   finish: (lines: string[]) => void;
-  // 手榴弾の管理。敵のいるモードで setEnabled(true) と onExplode を設定して使う。
+  // グレネードの管理。戦闘モードで setEnabled(true) と reset() を呼んで使う。
   grenadeSystem?: GrenadeSystem;
   // 近接攻撃の対象提供者。敵のいるモードが enter で自分を登録し、exit で null に戻す。
   meleeProvider?: MeleeTargetProvider | null;
@@ -91,8 +91,7 @@ function resetTargets(stage: Stage): void {
 function enableGrenades(ctx: GameContext): void {
   if (ctx.grenadeSystem) {
     ctx.grenadeSystem.setEnabled(true);
-    ctx.grenadeSystem.setAmmo(3);
-    // onExplode は設定しない＝範囲ダメージは無し（敵のいるモードだけが設定する）
+    ctx.grenadeSystem.reset();
   }
 }
 
@@ -121,8 +120,11 @@ function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
       }
       return false;
     },
-    applyKnockback: (vx: number, vz: number): void => {
-      e.unit.applyKnockback(vx, vz);
+    applyKnockback: (vx: number, vz: number, stagger?: number, tilt?: number): void => {
+      e.unit.applyKnockback(vx, vz, stagger, tilt);
+    },
+    applyStagger: (seconds: number): void => {
+      e.unit.applyStagger(seconds);
     },
   }));
 }
@@ -560,9 +562,7 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
     // 手榴弾を有効化し、爆発時の範囲ダメージを登録する
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(true);
-      ctx.grenadeSystem.setAmmo(3);
-      ctx.grenadeSystem.onExplode = (x, _y, z, r) =>
-        this.onGrenadeExplode(x, z, r);
+      ctx.grenadeSystem.reset();
     }
 
     this.startWave();
@@ -696,21 +696,6 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
     return makeMeleeTargets(this.enemies, (e) => this.removeEnemy(e, true));
   }
 
-  // 手榴弾の爆発：中心から半径内の敵に、近いほど大きいダメージを与える。
-  private onGrenadeExplode(x: number, z: number, radius: number): void {
-    if (!this.ctx) return;
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const e = this.enemies[i];
-      const dx = e.unit.group.position.x - x;
-      const dz = e.unit.group.position.z - z;
-      const dd = Math.hypot(dx, dz);
-      if (dd > radius) continue;
-      const dmg = 130 * (1 - dd / radius);
-      e.hp -= dmg;
-      if (e.hp <= 0) this.removeEnemy(e, true);
-    }
-  }
-
   update(ctx: GameContext, dt: number, now: number): void {
     if (!this.alive) return;
     ctx.player.getEyePosition(this.eye);
@@ -809,7 +794,7 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
         } else if (pk.kind === "health") {
           ctx.health.heal(30);
         } else {
-          if (ctx.grenadeSystem) ctx.grenadeSystem.addAmmo(1);
+          if (ctx.grenadeSystem) ctx.grenadeSystem.addFrag(1);
         }
         pk.dispose(ctx.scene);
         this.pickups.splice(i, 1);
@@ -867,7 +852,6 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
     // 手榴弾を無効化して片付ける
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(false);
-      ctx.grenadeSystem.onExplode = null;
       ctx.grenadeSystem.clear();
     }
     ctx.health.hide();
@@ -940,9 +924,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
     // 手榴弾を有効化し、爆発時の範囲ダメージを登録する
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(true);
-      ctx.grenadeSystem.setAmmo(3);
-      ctx.grenadeSystem.onExplode = (x, _y, z, r) =>
-        this.onGrenadeExplode(x, z, r);
+      ctx.grenadeSystem.reset();
     }
     // 一定時間ごとの手榴弾補充を予約する
     this.nextGrenadeRefill = now + this.GRENADE_REFILL_INTERVAL;
@@ -1016,7 +998,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
 
     // 手榴弾の自動補充（一定時間ごとに1個。上限はGrenadeSystem側で頭打ち）
     if (now >= this.nextGrenadeRefill) {
-      if (ctx.grenadeSystem) ctx.grenadeSystem.addAmmo(1);
+      if (ctx.grenadeSystem) ctx.grenadeSystem.addFrag(1);
       this.nextGrenadeRefill = now + this.GRENADE_REFILL_INTERVAL;
     }
 
@@ -1115,21 +1097,6 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
   }
 
   // 手榴弾の爆発：中心から半径内のボットに、近いほど大きいダメージを与える。
-  private onGrenadeExplode(x: number, z: number, radius: number): void {
-    if (!this.ctx) return;
-    const now = performance.now() / 1000;
-    for (let i = this.bots.length - 1; i >= 0; i--) {
-      const b = this.bots[i];
-      const dx = b.unit.group.position.x - x;
-      const dz = b.unit.group.position.z - z;
-      const dd = Math.hypot(dx, dz);
-      if (dd > radius) continue;
-      const dmg = 130 * (1 - dd / radius);
-      b.hp -= dmg;
-      if (b.hp <= 0) this.killBot(b, now);
-    }
-  }
-
   private finishMatch(ctx: GameContext): void {
     this.alive = false;
     ctx.finish([
@@ -1155,7 +1122,6 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
     // 手榴弾を無効化して片付ける
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(false);
-      ctx.grenadeSystem.onExplode = null;
       ctx.grenadeSystem.clear();
     }
     ctx.health.hide();

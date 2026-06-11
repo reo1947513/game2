@@ -240,10 +240,16 @@ export class EnemyUnit {
   }
 
   // ノックバックを与える。水平方向の初速（m/s）で、よろけと仰け反りも同時に開始する。
-  applyKnockback(vx: number, vz: number): void {
+  // 既定は近接キック用（よろけ0.7秒・仰け反り0.55）。爆風はより大きい値を渡す。
+  applyKnockback(vx: number, vz: number, stagger = 0.7, tilt = 0.55): void {
     this.kbVel.set(vx, 0, vz);
-    this.staggerTimer = 0.7;
-    this.tiltAmt = 0.55;
+    this.staggerTimer = Math.max(this.staggerTimer, stagger);
+    this.tiltAmt = Math.max(this.tiltAmt, tilt);
+  }
+
+  // 吹き飛ばしを伴わず、よろけ時間だけを与える（フラッシュバンの目くらまし用）。
+  applyStagger(seconds: number): void {
+    this.staggerTimer = Math.max(this.staggerTimer, seconds);
   }
 
   // よろけ中の毎フレーム処理。後方へ流れつつ減速し、仰け反りを戻す。

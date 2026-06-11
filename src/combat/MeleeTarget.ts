@@ -10,8 +10,10 @@ export interface MeleeTarget {
   isAlive(): boolean;
   // ダメージを与える。撃破に至れば true を返す。
   applyDamage(damage: number): boolean;
-  // 水平方向の初速（m/s）でノックバックさせる。
-  applyKnockback(vx: number, vz: number): void;
+  // 水平方向の初速（m/s）でノックバックさせる。よろけ・仰け反りの強さは任意指定。
+  applyKnockback(vx: number, vz: number, stagger?: number, tilt?: number): void;
+  // 吹き飛ばしを伴わず、よろけ時間（秒）だけ与える（フラッシュバン用）。
+  applyStagger(seconds: number): void;
 }
 
 // 近接の対象一覧を提供できるゲームモードが実装するインターフェース。

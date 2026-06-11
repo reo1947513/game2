@@ -68,6 +68,11 @@ export class MeleeSystem {
     this.provider = provider;
   }
 
+  // 外部（グレネード爆風など）から画面シェイクを足す。現在値より大きいときだけ更新する。
+  addShake(amt: number): void {
+    this.shakeAmt = Math.max(this.shakeAmt, amt);
+  }
+
   // ランジ中か（プレイヤーの速度上書き・FOV加算の判定に使う）。
   lungeActive(): boolean {
     return this.lungeTimer > 0;

@@ -19,8 +19,8 @@ export class Input {
   private switchQueued: WeaponKind | null = null;
   private kickQueued = false;
   private knifeQueued = false;
-  private grenadeHeldDown = false;
-  private grenadeReleasedQueued = false;
+  private fragQueued = false;
+  private flashQueued = false;
 
   private locked = false;
 
@@ -72,7 +72,8 @@ export class Input {
       if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
       if (code === "KeyV") this.kickQueued = true;
       if (code === "KeyF") this.knifeQueued = true;
-      if (code === "KeyG") this.grenadeHeldDown = true;
+      if (code === "KeyG") this.fragQueued = true;
+      if (code === "KeyC") this.flashQueued = true;
     }
     this.keys.add(code);
     // ブラウザ既定動作（スクロール等）を抑止
@@ -85,11 +86,6 @@ export class Input {
 
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
-    // 手榴弾はボタンを離した瞬間に投げる
-    if (e.code === "KeyG") {
-      this.grenadeHeldDown = false;
-      this.grenadeReleasedQueued = true;
-    }
   };
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -180,10 +176,9 @@ export class Input {
   queueKnife(): void {
     this.knifeQueued = true;
   }
-  // 手榴弾ボタンの押下状態を渡す。離した（true→false）瞬間に投擲を予約する。
+  // モバイルのグレネードボタン。押した瞬間にフラグ投擲を予約する。
   setGrenadeHeld(held: boolean): void {
-    if (this.grenadeHeldDown && !held) this.grenadeReleasedQueued = true;
-    this.grenadeHeldDown = held;
+    if (held) this.fragQueued = true;
   }
 
   // 毎フレーム呼ぶ。現在の入力をまとめて返す。
@@ -214,8 +209,8 @@ export class Input {
       switchTo: this.switchQueued,
       kickPressed: this.kickQueued,
       knifePressed: this.knifeQueued,
-      grenadeHeld: this.grenadeHeldDown,
-      grenadeReleased: this.grenadeReleasedQueued,
+      fragThrow: this.fragQueued,
+      flashThrow: this.flashQueued,
       yaw: this.yaw,
       pitch: this.pitch,
     };
@@ -227,7 +222,8 @@ export class Input {
     this.switchQueued = null;
     this.kickQueued = false;
     this.knifeQueued = false;
-    this.grenadeReleasedQueued = false;
+    this.fragQueued = false;
+    this.flashQueued = false;
 
     return state;
   }

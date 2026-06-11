@@ -1015,8 +1015,8 @@ export class TouchControls {
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 86%;
-        height: 86%;
+        width: 74%;
+        height: 74%;
         transform: translate(-50%, -50%);
         background: currentColor;
         -webkit-mask: url(/icon_jump.png) center / contain no-repeat;

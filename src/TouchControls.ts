@@ -971,6 +971,23 @@ export class TouchControls {
         -webkit-mask: url(/icon_weapon_swap.png) center / contain no-repeat;
         mask: url(/icon_weapon_swap.png) center / contain no-repeat;
       }
+      /* リロードボタンは弾丸3発＋回転矢印アイコンを表示する。文字「R」は隠す。
+         色は currentColor で文字色・押下時の色変化に追従する。 */
+      #touch-root .tc-btn[data-action="reload"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="reload"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 72%;
+        height: 72%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_reload.png) center / contain no-repeat;
+        mask: url(/icon_reload.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;

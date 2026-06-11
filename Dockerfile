@@ -1,0 +1,28 @@
+# ARENA STRIKE クライアント（Vite ビルド → Express で dist を配信）。
+# Nixpacks の自動生成を使わず、このDockerfileでビルドを完全に制御する。
+# VITE_WS_URL はビルド時に焼き込む必要があるため、ARG で受けて build 前に ENV へ反映する。
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 依存のインストール（lockfile があるので npm ci）
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# ソース一式
+COPY . .
+
+# WebSocketサーバーのURL（Railwayのサービス変数 VITE_WS_URL が build-arg として渡る）。
+# Vite は import.meta.env.VITE_WS_URL をビルド時に読むので、build より前に ENV へ置く。
+ARG VITE_WS_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+
+# tsc --noEmit && vite build → dist/
+RUN npm run build
+
+ENV NODE_ENV=production
+
+# Railway が注入する PORT を server.js が読む（既定3000）。
+EXPOSE 3000
+
+CMD ["node", "server.js"]

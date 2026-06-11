@@ -8,6 +8,7 @@ import { EnemyUnit } from "./Enemy";
 import { Pickup, PickupKind } from "./Pickup";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { MeleeTarget, MeleeTargetProvider } from "./combat/MeleeTarget";
+import { SoundSystem } from "./SoundSystem";
 
 // 各モードがゲームの中身へ触るための入口をまとめたものです。
 export interface GameContext {
@@ -17,12 +18,16 @@ export interface GameContext {
   ui: ModeUI;
   player: PlayerController;
   health: Health;
-  // モードが「終了」を伝えるときに呼ぶ。結果の行を渡す。
-  finish: (lines: string[]) => void;
+  // モードが「終了」を伝えるときに呼ぶ。結果の行と、リスタート可否を渡す。
+  finish: (lines: string[], canRestart?: boolean) => void;
+  // メニューで選択中の難易度（モード開始時に Game がセットする）。
+  difficulty?: "normal" | "hard";
   // グレネードの管理。戦闘モードで setEnabled(true) と reset() を呼んで使う。
   grenadeSystem?: GrenadeSystem;
   // 近接攻撃の対象提供者。敵のいるモードが enter で自分を登録し、exit で null に戻す。
   meleeProvider?: MeleeTargetProvider | null;
+  // WebAudio の効果音（モードが警告音・ビープなどに使う）。
+  sound?: SoundSystem;
 }
 
 // 1つの遊び方（モード）の共通の形です。
@@ -108,7 +113,7 @@ function disableGrenades(ctx: GameContext): void {
 
 // 各戦闘モードが自分の敵配列を MeleeTarget 配列として公開するための共通アダプタ。
 // 撃破時の後始末（ドロップ・スコア・復活予約）はモード固有なので kill コールバックで渡す。
-function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
+export function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
   list: T[],
   kill: (entry: T) => void
 ): MeleeTarget[] {
@@ -134,7 +139,7 @@ function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
 
 // 敵同士の重なりを解消し、プレイヤーを敵の外へ押し出す（敵を壁のように固くする）。
 // 物理エンジンは使わず、円柱同士の押し出しで処理する。飛行する敵は対象外。
-function resolveBodyCollisions(units: EnemyUnit[], player: PlayerController): void {
+export function resolveBodyCollisions(units: EnemyUnit[], player: PlayerController): void {
   // 敵同士の押し離し
   for (let i = 0; i < units.length; i++) {
     const a = units[i];

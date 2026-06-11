@@ -12,6 +12,8 @@ export class ModeUI {
   private menu: HTMLElement;
   private menuList: HTMLElement;
   private stageRow: HTMLElement;
+  private difficultyRow: HTMLElement;
+  private resultRestart: HTMLElement;
   private result: HTMLElement;
   private resultBody: HTMLElement;
   private resultBack: HTMLElement;
@@ -44,6 +46,15 @@ export class ModeUI {
     this.stageRow.className = "stage-row";
     menuCard.appendChild(this.stageRow);
 
+    // 難易度選択
+    const diffTitle = document.createElement("div");
+    diffTitle.className = "mode-sub-title";
+    diffTitle.textContent = "難易度";
+    menuCard.appendChild(diffTitle);
+    this.difficultyRow = document.createElement("div");
+    this.difficultyRow.className = "stage-row";
+    menuCard.appendChild(this.difficultyRow);
+
     this.menuList = document.createElement("div");
     this.menuList.className = "mode-list";
     menuCard.appendChild(this.menuList);
@@ -59,8 +70,13 @@ export class ModeUI {
     this.resultBody = document.createElement("div");
     this.resultBody.className = "mode-result-body";
     resultCard.appendChild(this.resultBody);
+    this.resultRestart = document.createElement("button");
+    this.resultRestart.className = "mode-btn mode-btn-primary";
+    this.resultRestart.textContent = "リスタート";
+    this.resultRestart.style.display = "none";
+    resultCard.appendChild(this.resultRestart);
     this.resultBack = document.createElement("button");
-    this.resultBack.className = "mode-btn mode-btn-primary";
+    this.resultBack.className = "mode-btn";
     this.resultBack.textContent = "メニューに戻る";
     resultCard.appendChild(this.resultBack);
     this.result.appendChild(resultCard);
@@ -79,26 +95,21 @@ export class ModeUI {
     onSelect: (id: string) => void,
     stages: Array<{ id: string; label: string }>,
     selectedStage: string,
-    onStageSelect: (id: string) => void
+    onStageSelect: (id: string) => void,
+    difficulties: Array<{ id: string; label: string }>,
+    selectedDifficulty: string,
+    onDifficultySelect: (id: string) => void
   ): void {
     this.hideResult();
     this.hideHud();
 
-    // ステージ選択ボタン群（選択中をハイライト）
-    this.stageRow.innerHTML = "";
-    const stageBtns: HTMLElement[] = [];
-    for (const s of stages) {
-      const sb = document.createElement("button");
-      sb.className = "stage-item" + (s.id === selectedStage ? " active" : "");
-      sb.textContent = s.label;
-      sb.addEventListener("click", () => {
-        onStageSelect(s.id);
-        for (const x of stageBtns) x.classList.remove("active");
-        sb.classList.add("active");
-      });
-      this.stageRow.appendChild(sb);
-      stageBtns.push(sb);
-    }
+    this.renderSelector(this.stageRow, stages, selectedStage, onStageSelect);
+    this.renderSelector(
+      this.difficultyRow,
+      difficulties,
+      selectedDifficulty,
+      onDifficultySelect
+    );
 
     this.menuList.innerHTML = "";
     for (const item of items) {
@@ -123,7 +134,7 @@ export class ModeUI {
   }
 
   // 結果画面を表示する
-  showResult(lines: string[], onBack: () => void): void {
+  showResult(lines: string[], onBack: () => void, onRestart?: () => void): void {
     this.hideHud();
     this.resultBody.innerHTML = "";
     lines.forEach((line, i) => {
@@ -132,8 +143,37 @@ export class ModeUI {
       row.textContent = line;
       this.resultBody.appendChild(row);
     });
+    if (onRestart) {
+      this.resultRestart.style.display = "block";
+      this.resultRestart.onclick = () => onRestart();
+    } else {
+      this.resultRestart.style.display = "none";
+    }
     this.resultBack.onclick = () => onBack();
     this.result.style.display = "flex";
+  }
+
+  // ステージ・難易度などの選択ボタン群を描画する共通処理（選択中をハイライト）。
+  private renderSelector(
+    row: HTMLElement,
+    items: Array<{ id: string; label: string }>,
+    selected: string,
+    onSelect: (id: string) => void
+  ): void {
+    row.innerHTML = "";
+    const btns: HTMLElement[] = [];
+    for (const s of items) {
+      const b = document.createElement("button");
+      b.className = "stage-item" + (s.id === selected ? " active" : "");
+      b.textContent = s.label;
+      b.addEventListener("click", () => {
+        onSelect(s.id);
+        for (const x of btns) x.classList.remove("active");
+        b.classList.add("active");
+      });
+      row.appendChild(b);
+      btns.push(b);
+    }
   }
 
   hideResult(): void {

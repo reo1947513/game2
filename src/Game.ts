@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { Input } from "./Input";
 import { Stage, StageId, STAGE_LIST } from "./Stage";
+import { GauntletRun } from "./modes/GauntletRun";
+import { KeepMoving } from "./modes/KeepMoving";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 import { HUD } from "./HUD";
@@ -45,6 +47,8 @@ export class Game {
   private wasDead = false; // 前フレームの戦闘中死亡状態（復活検知に使う）
   private currentStageId: StageId = "skyframe"; // 現在ロード中のステージ
   private selectedStageId: StageId = "skyframe"; // メニューで選択中のステージ
+  private selectedDifficulty: "normal" | "hard" = "normal"; // メニューで選択中の難易度
+  private currentModeId = ""; // 現在のモードID（リスタート用）
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -110,7 +114,16 @@ export class Game {
 
     // モード関連（選択画面・結果画面・モード中の表示と、モードの管理）
     this.ui = new ModeUI();
-    this.modeManager = new ModeManager([new TargetRush(), new MovingRange(), new Parkour(), new WaveSurvival(), new BotDeathmatch()]);
+    this.modeManager = new ModeManager([
+      new TargetRush(),
+      new MovingRange(),
+      new Parkour(),
+      new WaveSurvival(),
+      new BotDeathmatch(),
+      new GauntletRun("fixed"),
+      new GauntletRun("free"),
+      new KeepMoving(),
+    ]);
     this.ctx = {
       scene: this.scene,
       stage: this.stage,
@@ -118,9 +131,12 @@ export class Game {
       ui: this.ui,
       player: this.player,
       health: this.health,
-      finish: (lines: string[]) => this.onModeFinish(lines),
+      finish: (lines: string[], canRestart?: boolean) =>
+        this.onModeFinish(lines, canRestart),
+      difficulty: this.selectedDifficulty,
       grenadeSystem: this.grenades,
       meleeProvider: null,
+      sound: this.sound,
     };
 
     // Escなどでポインタロックが外れたら、プレイ中ならモード選択に戻す
@@ -178,6 +194,14 @@ export class Game {
       this.selectedStageId,
       (sid: string) => {
         this.selectedStageId = sid as StageId;
+      },
+      [
+        { id: "normal", label: "NORMAL" },
+        { id: "hard", label: "HARD" },
+      ],
+      this.selectedDifficulty,
+      (did: string) => {
+        this.selectedDifficulty = did === "hard" ? "hard" : "normal";
       }
     );
   }
@@ -206,6 +230,8 @@ export class Game {
     // モードに固定ステージがあればそれを、無ければ選択中のステージをロードする
     const mode = this.modeManager.get(id);
     this.switchStage(mode?.fixedStage ?? this.selectedStageId);
+    this.currentModeId = id;
+    this.ctx.difficulty = this.selectedDifficulty;
     this.melee.cancel();
     this.modeManager.start(id, this.ctx, now);
     // ステージのスポーン地点から開始する（SKYFRAMEは南ゲート前）
@@ -215,13 +241,23 @@ export class Game {
   }
 
   // モードが終了したとき（結果を表示し、操作を止める）
-  private onModeFinish(lines: string[]): void {
+  private onModeFinish(lines: string[], canRestart?: boolean): void {
     this.screen = "result";
     this.paused = true;
     this.melee.cancel();
     this.suppressUnlockMenu = true;
     if (document.exitPointerLock) document.exitPointerLock();
-    this.ui.showResult(lines, () => this.showMenu());
+    this.ui.showResult(
+      lines,
+      () => this.showMenu(),
+      canRestart ? () => this.restartMode() : undefined
+    );
+  }
+
+  // 結果画面のリスタートボタンから、同じモードを即やり直す。
+  private restartMode(): void {
+    this.ui.hideAll();
+    this.beginMode(this.currentModeId);
   }
 
   // 一時停止の切り替え（タッチのポーズメニューから呼ばれる）

@@ -1022,6 +1022,38 @@ export class TouchControls {
         -webkit-mask: url(/icon_jump.png) center / contain no-repeat;
         mask: url(/icon_jump.png) center / contain no-repeat;
       }
+      /* 蹴りボタンは脚（キック）シルエットを表示する。文字「蹴り」は隠す。 */
+      #touch-root .tc-btn[data-action="kick"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="kick"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 82%;
+        height: 82%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_kick.png) center / contain no-repeat;
+        mask: url(/icon_kick.png) center / contain no-repeat;
+      }
+      /* ナイフボタンはナイフのシルエットを表示する。文字「ナイフ」は隠す。 */
+      #touch-root .tc-btn[data-action="knife"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="knife"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 80%;
+        height: 80%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_knife.png) center / contain no-repeat;
+        mask: url(/icon_knife.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;

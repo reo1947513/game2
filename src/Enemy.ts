@@ -144,6 +144,16 @@ export class EnemyUnit {
     this.group.position.set(x, 0, z);
   }
 
+  // 体の当たり判定半径（スケール込み）。敵同士・対プレイヤーの押し出しに使う。
+  get collisionRadius(): number {
+    return this.radius * this.scaleFactor;
+  }
+
+  // 固体として押し出し対象にするか（飛行する敵は上空にいるため対象外）。
+  isSolidBody(): boolean {
+    return !this.flying;
+  }
+
   // 目標へ向かって水平移動する。地上の敵は壁やブロックを避け、
   // 飛行する敵は障害物を無視して、高度を目標へ寄せる。
   moveToward(

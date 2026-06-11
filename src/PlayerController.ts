@@ -95,6 +95,28 @@ export class PlayerController {
     return Math.hypot(this.velocity.x, this.velocity.z);
   }
 
+  // 体の当たり判定半径（敵との押し出しに使う）
+  get bodyRadius(): number {
+    return this.radius;
+  }
+
+  // 敵（円柱）の外へプレイヤーを押し出す。敵を壁のように固くするための処理。
+  // cx,cz は敵の中心、minDist は両者の半径の和。
+  pushOutOfBody(cx: number, cz: number, minDist: number): void {
+    const dx = this.position.x - cx;
+    const dz = this.position.z - cz;
+    const d = Math.hypot(dx, dz);
+    if (d >= minDist) return;
+    if (d < 0.0001) {
+      // ほぼ真上に重なったときは適当な向きへ逃がす
+      this.position.x += minDist;
+      return;
+    }
+    const push = minDist - d;
+    this.position.x += (dx / d) * push;
+    this.position.z += (dz / d) * push;
+  }
+
   // 指定位置へ戻し、速度を0にする（リスポーン用）。既定は初期スポーン地点。
   respawn(x = 0, y = 0, z = 8): void {
     this.position.set(x, y, z);

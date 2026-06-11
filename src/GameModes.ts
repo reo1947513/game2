@@ -129,6 +129,65 @@ function makeMeleeTargets<T extends { unit: EnemyUnit; hp: number }>(
   }));
 }
 
+// 敵同士の重なりを解消し、プレイヤーを敵の外へ押し出す（敵を壁のように固くする）。
+// 物理エンジンは使わず、円柱同士の押し出しで処理する。飛行する敵は対象外。
+function resolveBodyCollisions(units: EnemyUnit[], player: PlayerController): void {
+  // 敵同士の押し離し
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i];
+    if (!a.isSolidBody()) continue;
+    const ar = a.collisionRadius;
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j];
+      if (!b.isSolidBody()) continue;
+      const min = ar + b.collisionRadius;
+      const dx = b.group.position.x - a.group.position.x;
+      const dz = b.group.position.z - a.group.position.z;
+      let d = Math.hypot(dx, dz);
+      if (d >= min) continue;
+      let nx: number;
+      let nz: number;
+      if (d < 0.0001) {
+        // ほぼ完全に重なっているときは決め打ちの向きへ逃がす
+        const ang = i * 1.7 + j;
+        nx = Math.cos(ang);
+        nz = Math.sin(ang);
+        d = 0.0001;
+      } else {
+        nx = dx / d;
+        nz = dz / d;
+      }
+      const overlap = min - d;
+      // よろけ中（ノックバック中）の敵は押し離しで動かさず、吹き飛びを優先する
+      const aMove = a.staggerTimer <= 0;
+      const bMove = b.staggerTimer <= 0;
+      if (aMove && bMove) {
+        const h = overlap * 0.5;
+        a.group.position.x -= nx * h;
+        a.group.position.z -= nz * h;
+        b.group.position.x += nx * h;
+        b.group.position.z += nz * h;
+      } else if (aMove) {
+        a.group.position.x -= nx * overlap;
+        a.group.position.z -= nz * overlap;
+      } else if (bMove) {
+        b.group.position.x += nx * overlap;
+        b.group.position.z += nz * overlap;
+      }
+    }
+  }
+  // プレイヤーを敵の外へ押し出す（敵は壁のように固い）
+  const pr = player.bodyRadius;
+  for (const u of units) {
+    if (!u.isSolidBody()) continue;
+    player.pushOutOfBody(
+      u.group.position.x,
+      u.group.position.z,
+      pr + u.collisionRadius
+    );
+  }
+}
+
 // ===== モード1：ターゲットラッシュ（制限時間内にできるだけ多く撃つ） =====
 export class TargetRush implements GameMode {
   id = "rush";
@@ -775,6 +834,12 @@ export class WaveSurvival implements GameMode, MeleeTargetProvider {
       }
     }
 
+    // 敵同士の重なりとプレイヤーのすり抜けを解消する
+    resolveBodyCollisions(
+      this.enemies.map((e) => e.unit),
+      ctx.player
+    );
+
     // 近接で接触している敵がいれば、一定間隔で体力を減らす
     if (contacting && now >= this.nextContactTime) {
       ctx.health.damage(12);
@@ -1044,6 +1109,12 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
         }
       }
     }
+
+    // 敵同士の重なりとプレイヤーのすり抜けを解消する
+    resolveBodyCollisions(
+      this.bots.map((b) => b.unit),
+      ctx.player
+    );
 
     // 補充の時刻が来たボットを出す
     for (let i = this.respawnQueue.length - 1; i >= 0; i--) {

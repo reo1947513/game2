@@ -12,9 +12,10 @@ RUN npm ci
 # ソース一式
 COPY . .
 
-# WebSocketサーバーのURL（Railwayのサービス変数 VITE_WS_URL が build-arg として渡る）。
+# WebSocketサーバーのURL。Railway が build-arg を渡せば上書きされるが、渡されない場合に
+# 備えて本番サーバーURLを既定値にしておく（これで確実にバンドルへ焼き込まれる）。
 # Vite は import.meta.env.VITE_WS_URL をビルド時に読むので、build より前に ENV へ置く。
-ARG VITE_WS_URL
+ARG VITE_WS_URL=wss://game2-server-production.up.railway.app
 ENV VITE_WS_URL=$VITE_WS_URL
 
 # tsc --noEmit && vite build → dist/

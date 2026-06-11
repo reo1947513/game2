@@ -261,10 +261,11 @@ export class Game {
 
   // 接続先のWebSocket URL（本番は VITE_WS_URL、未設定ならローカル）。
   private wsUrl(): string {
-    const meta = import.meta as unknown as {
-      env?: { VITE_WS_URL?: string };
-    };
-    return meta.env?.VITE_WS_URL || "ws://localhost:8080";
+    // import.meta.env.VITE_WS_URL は Vite がビルド時に静的置換する。
+    // 中間変数へ入れると置換されないため、必ずこの形のまま直接参照する（型のため最小キャスト）。
+    const url = (import.meta as unknown as { env: { VITE_WS_URL?: string } })
+      .env.VITE_WS_URL;
+    return url || "ws://localhost:8080";
   }
 
   // ロビーを開く。ネットワークイベントを1回だけ結線し、作成/参加の操作を受ける。

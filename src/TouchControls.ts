@@ -1005,6 +1005,23 @@ export class TouchControls {
         -webkit-mask: url(/icon_ads.png) center / contain no-repeat;
         mask: url(/icon_ads.png) center / contain no-repeat;
       }
+      /* ジャンプボタンは跳んでいる人物シルエットを表示する。文字「JUMP」は隠す。
+         色は currentColor で文字色・押下時の色変化に追従する。 */
+      #touch-root .tc-btn[data-action="jump"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="jump"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 86%;
+        height: 86%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_jump.png) center / contain no-repeat;
+        mask: url(/icon_jump.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;

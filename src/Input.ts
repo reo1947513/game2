@@ -19,7 +19,8 @@ export class Input {
   private switchQueued: WeaponKind | null = null;
   private kickQueued = false;
   private knifeQueued = false;
-  private fragQueued = false;
+  private fragHeldDown = false;
+  private fragReleasedQueued = false;
   private flashQueued = false;
 
   private locked = false;
@@ -72,7 +73,7 @@ export class Input {
       if (code === "Digit4") this.switchQueued = WeaponKind.Smg;
       if (code === "KeyV") this.kickQueued = true;
       if (code === "KeyF") this.knifeQueued = true;
-      if (code === "KeyG") this.fragQueued = true;
+      if (code === "KeyG") this.fragHeldDown = true;
       if (code === "KeyC") this.flashQueued = true;
     }
     this.keys.add(code);
@@ -86,6 +87,11 @@ export class Input {
 
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
+    // フラグは離した瞬間に投擲（長押し中は軌道プレビュー）
+    if (e.code === "KeyG") {
+      this.fragHeldDown = false;
+      this.fragReleasedQueued = true;
+    }
   };
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -176,9 +182,10 @@ export class Input {
   queueKnife(): void {
     this.knifeQueued = true;
   }
-  // モバイルのグレネードボタン。押した瞬間にフラグ投擲を予約する。
+  // モバイルのグレネードボタン。長押しで軌道プレビュー、離した瞬間にフラグ投擲。
   setGrenadeHeld(held: boolean): void {
-    if (held) this.fragQueued = true;
+    if (this.fragHeldDown && !held) this.fragReleasedQueued = true;
+    this.fragHeldDown = held;
   }
 
   // 毎フレーム呼ぶ。現在の入力をまとめて返す。
@@ -209,7 +216,8 @@ export class Input {
       switchTo: this.switchQueued,
       kickPressed: this.kickQueued,
       knifePressed: this.knifeQueued,
-      fragThrow: this.fragQueued,
+      fragHeld: this.fragHeldDown,
+      fragReleased: this.fragReleasedQueued,
       flashThrow: this.flashQueued,
       yaw: this.yaw,
       pitch: this.pitch,
@@ -222,7 +230,7 @@ export class Input {
     this.switchQueued = null;
     this.kickQueued = false;
     this.knifeQueued = false;
-    this.fragQueued = false;
+    this.fragReleasedQueued = false;
     this.flashQueued = false;
 
     return state;

@@ -40,6 +40,12 @@ export class GrenadeSystem {
   private overlay: FlashbangOverlay;
   private hudEl: HTMLElement | null;
 
+  // フラグの軌道プレビュー（長押し中に表示する弧と着弾リング）
+  private previewLine: THREE.Mesh;
+  private previewLineMat: THREE.MeshBasicMaterial;
+  private previewRing: THREE.Mesh;
+  private previewRingMat: THREE.MeshBasicMaterial;
+
   // 作業用ベクトル
   private readonly camPos = new THREE.Vector3();
   private readonly camDir = new THREE.Vector3();
@@ -58,6 +64,32 @@ export class GrenadeSystem {
     this.explosionFx = new ExplosionFx(scene, camera);
     this.overlay = new FlashbangOverlay();
     this.hudEl = document.getElementById("grenade-count");
+
+    // 軌道プレビュー（弧の管）
+    this.previewLineMat = new THREE.MeshBasicMaterial({
+      color: 0xffd23a,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    });
+    this.previewLine = new THREE.Mesh(new THREE.BufferGeometry(), this.previewLineMat);
+    this.previewLine.visible = false;
+    scene.add(this.previewLine);
+
+    // 着弾リング（最初に床へ落ちる位置の目安）
+    this.previewRingMat = new THREE.MeshBasicMaterial({
+      color: 0xffd23a,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ringGeo = new THREE.RingGeometry(0.28, 0.42, 24);
+    this.previewRing = new THREE.Mesh(ringGeo, this.previewRingMat);
+    this.previewRing.rotation.x = -Math.PI / 2;
+    this.previewRing.visible = false;
+    scene.add(this.previewRing);
+
     this.updateHud();
   }
 
@@ -65,6 +97,7 @@ export class GrenadeSystem {
   setEnabled(b: boolean): void {
     this.enabled = b;
     if (this.hudEl) this.hudEl.style.display = b ? "block" : "none";
+    if (!b) this.hidePreview();
   }
 
   // 現在モードの近接対象提供者を毎フレーム差し込む（敵への爆風効果に使う）。
@@ -79,13 +112,80 @@ export class GrenadeSystem {
   }
 
   // 投擲入力の処理。プレイヤー更新の後（カメラ確定後）に呼ぶ。生存中のみ投擲可。
+  // フラグは長押し中に軌道をプレビューし、離した瞬間に投擲。フラッシュは押下で即投擲。
   handleInput(input: InputState, alive: boolean): void {
-    if (!this.enabled || !alive) return;
-    if (input.fragThrow) {
+    if (!this.enabled || !alive) {
+      this.hidePreview();
+      return;
+    }
+    // フラグ：長押し中は軌道プレビュー、離したら投擲
+    if (input.fragHeld && this.fragAmmo > 0) {
+      this.showFragPreview();
+    } else {
+      this.hidePreview();
+    }
+    if (input.fragReleased) {
       this.tryThrow("frag");
-    } else if (input.flashThrow) {
+      this.hidePreview();
+    }
+    // フラッシュ：押した瞬間に投擲
+    if (input.flashThrow) {
       this.tryThrow("flash");
     }
+  }
+
+  // フラグの放物線を、最初に床へ落ちる地点まで描く（バウンド前まで）。
+  private showFragPreview(): void {
+    this.camera.getWorldPosition(this.camPos);
+    this.camera.getWorldDirection(this.camDir);
+    const pv = this.player.velocity;
+
+    let px = this.camPos.x + this.camDir.x * 0.5;
+    let py = this.camPos.y + this.camDir.y * 0.5 - 0.1;
+    let pz = this.camPos.z + this.camDir.z * 0.5;
+    let vx = this.camDir.x * 15 + pv.x * 0.6;
+    let vy = this.camDir.y * 15 + 3.5;
+    let vz = this.camDir.z * 15 + pv.z * 0.6;
+
+    const G = 26;
+    const step = 0.04;
+    const pts: THREE.Vector3[] = [new THREE.Vector3(px, py, pz)];
+    let landing: THREE.Vector3 | null = null;
+    for (let i = 0; i < 80; i++) {
+      vy -= G * step;
+      px += vx * step;
+      py += vy * step;
+      pz += vz * step;
+      if (py <= 0.12) {
+        landing = new THREE.Vector3(px, 0.12, pz);
+        pts.push(landing);
+        break;
+      }
+      pts.push(new THREE.Vector3(px, py, pz));
+    }
+    if (pts.length < 2) {
+      this.hidePreview();
+      return;
+    }
+
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const seg = Math.max(12, pts.length * 2);
+    const geo = new THREE.TubeGeometry(curve, seg, 0.04, 6, false);
+    this.previewLine.geometry.dispose();
+    this.previewLine.geometry = geo;
+    this.previewLine.visible = true;
+
+    if (landing) {
+      this.previewRing.position.set(landing.x, 0.06, landing.z);
+      this.previewRing.visible = true;
+    } else {
+      this.previewRing.visible = false;
+    }
+  }
+
+  private hidePreview(): void {
+    this.previewLine.visible = false;
+    this.previewRing.visible = false;
   }
 
   private tryThrow(type: GrenadeType): void {
@@ -286,6 +386,7 @@ export class GrenadeSystem {
     this.grenades = [];
     this.explosionFx.clear();
     this.overlay.reset();
+    this.hidePreview();
     this.updateHud();
   }
 
@@ -295,6 +396,7 @@ export class GrenadeSystem {
     this.grenades = [];
     this.explosionFx.clear();
     this.overlay.reset();
+    this.hidePreview();
   }
 
   private updateHud(): void {

@@ -32,7 +32,8 @@ export interface InputState {
   switchTo: WeaponKind | null; // 数字キーで武器切替
   kickPressed: boolean; // 蹴り（押した瞬間）
   knifePressed: boolean; // ナイフ斬り（押した瞬間）
-  fragThrow: boolean; // フラググレネード投擲（押した瞬間）
+  fragHeld: boolean; // フラグ投擲ボタン保持（長押しで軌道プレビュー）
+  fragReleased: boolean; // フラグ投擲ボタンを離した瞬間（投擲）
   flashThrow: boolean; // フラッシュバン投擲（押した瞬間）
   // 視点（マウス移動の累積から計算した向き）
   yaw: number;

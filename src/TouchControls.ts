@@ -50,7 +50,7 @@ const SPRINT_DEEP = 0.85;
 
 // 個別サイズ倍率の下限・上限（％はこの値×100）
 const SCALE_MIN = 0.6;
-const SCALE_MAX = 1.6;
+const SCALE_MAX = 2.5;
 
 const ACTIONS: ActionDef[] = [
   { key: "fire", label: "射撃", type: "hold" },
@@ -172,6 +172,15 @@ export class TouchControls {
   private dragEl: HTMLElement | null = null;
   private dragId: number | null = null;
 
+  // 配置編集パネル（バナー）自体のドラッグ移動用
+  private bannerDragId: number | null = null;
+  private bannerStartX = 0;
+  private bannerStartY = 0;
+  private bannerLeft = 0;
+  private bannerTop = 0;
+  // 一度でも手動で動かしたら true（中央寄せ→絶対px配置へ切り替え）
+  private bannerPlaced = false;
+
   // 配置編集で「大きさ調整の対象」として選んでいるボタン（move含む）
   private selectedKey: string | null = null;
 
@@ -275,6 +284,14 @@ export class TouchControls {
 
     // ---- 配置編集パネル（画面上部に表示。プレイUIは下に見えたまま編集する） ----
     this.editBanner = el("div", "tc-edit-banner");
+
+    // パネル自体をドラッグ移動するためのつまみ（ここを掴んだときだけ移動する）
+    const editGrip = el("div", "tc-edit-grip", "⠿ ドラッグでこのパネルを移動");
+    editGrip.addEventListener("pointerdown", (e) => this.startBannerDrag(e));
+    editGrip.addEventListener("pointermove", (e) => this.onBannerDrag(e));
+    editGrip.addEventListener("pointerup", (e) => this.endBannerDrag(e));
+    editGrip.addEventListener("pointercancel", (e) => this.endBannerDrag(e));
+    this.editBanner.appendChild(editGrip);
 
     // 1段目：説明＋完了ボタン
     const editTop = el("div", "tc-edit-top");
@@ -616,6 +633,58 @@ export class TouchControls {
     this.dragId = null;
   }
 
+  // ===== 配置編集パネル（バナー）自体のドラッグ移動 =====
+  private startBannerDrag(e: PointerEvent): void {
+    // 初回ドラッグ時、中央寄せ(left:50%+translateX)から現在位置の絶対pxへ切り替える
+    if (!this.bannerPlaced) {
+      const rect = this.editBanner.getBoundingClientRect();
+      this.bannerLeft = rect.left;
+      this.bannerTop = rect.top;
+      this.bannerPlaced = true;
+      this.applyBannerPos();
+    }
+    this.bannerDragId = e.pointerId;
+    this.bannerStartX = e.clientX;
+    this.bannerStartY = e.clientY;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+
+  private onBannerDrag(e: PointerEvent): void {
+    if (this.bannerDragId !== e.pointerId) return;
+    const dx = e.clientX - this.bannerStartX;
+    const dy = e.clientY - this.bannerStartY;
+    this.bannerStartX = e.clientX;
+    this.bannerStartY = e.clientY;
+    const rect = this.editBanner.getBoundingClientRect();
+    // 画面外へ出てしまわないようクランプする
+    this.bannerLeft = clamp(
+      this.bannerLeft + dx,
+      0,
+      Math.max(0, window.innerWidth - rect.width)
+    );
+    this.bannerTop = clamp(
+      this.bannerTop + dy,
+      0,
+      Math.max(0, window.innerHeight - rect.height)
+    );
+    this.applyBannerPos();
+    e.preventDefault();
+  }
+
+  private endBannerDrag(e: PointerEvent): void {
+    if (this.bannerDragId !== e.pointerId) return;
+    this.bannerDragId = null;
+  }
+
+  // 現在のパネル位置を絶対px配置として反映する
+  private applyBannerPos(): void {
+    if (!this.bannerPlaced) return;
+    this.editBanner.style.left = `${this.bannerLeft}px`;
+    this.editBanner.style.top = `${this.bannerTop}px`;
+    this.editBanner.style.transform = "none";
+  }
+
   // 編集対象ボタンを選ぶ（強調表示し、大きさスライダーを同期）
   private selectKey(key: string): void {
     this.selectedKey = key;
@@ -885,6 +954,23 @@ export class TouchControls {
         -webkit-mask: url(/icon_bullet.png) center / contain no-repeat;
         mask: url(/icon_bullet.png) center / contain no-repeat;
       }
+      /* 武器切替ボタンは拳銃＋回転矢印アイコンを表示する。武器名テキストは隠す。
+         色は currentColor で文字色・押下時の色変化に追従する。 */
+      #touch-root .tc-btn[data-action="weapon"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="weapon"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 70%;
+        height: 70%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_weapon_swap.png) center / contain no-repeat;
+        mask: url(/icon_weapon_swap.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;
@@ -1017,6 +1103,23 @@ export class TouchControls {
         border: 1px solid rgba(255, 200, 80, 0.6);
         border-radius: 12px;
         padding: 12px 14px;
+      }
+      #touch-root .tc-edit-grip {
+        align-self: stretch;
+        text-align: center;
+        color: #ffd27a;
+        font-size: 12px;
+        letter-spacing: 2px;
+        padding: 4px 0 2px;
+        margin: -2px 0 2px;
+        border-bottom: 1px solid rgba(255, 200, 80, 0.25);
+        cursor: grab;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #touch-root .tc-edit-grip:active {
+        cursor: grabbing;
       }
       #touch-root .tc-edit-top {
         display: flex;

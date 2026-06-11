@@ -868,6 +868,23 @@ export class TouchControls {
         background: rgba(255, 170, 60, 0.7);
         color: #1a1206;
       }
+      /* 射撃ボタンだけ、文字ラベルの代わりに弾丸アイコンを表示する。
+         色は currentColor で文字色に追従させ、押下時(active)の色変化も自動で反映する。 */
+      #touch-root .tc-btn[data-action="fire"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="fire"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 62%;
+        height: 62%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_bullet.png) center / contain no-repeat;
+        mask: url(/icon_bullet.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;

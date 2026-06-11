@@ -10,6 +10,10 @@ import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
+import { NetworkManager } from "./online/NetworkManager";
+import { RemotePlayer } from "./online/RemotePlayer";
+import { RoomLobbyUI } from "./ui/RoomLobbyUI";
+import { PlayerState, WorldState } from "./online/netTypes";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
 import { KickViewmodel } from "./combat/KickViewmodel";
@@ -49,6 +53,13 @@ export class Game {
   private selectedStageId: StageId = "skyframe"; // メニューで選択中のステージ
   private selectedDifficulty: "normal" | "hard" = "normal"; // メニューで選択中の難易度
   private currentModeId = ""; // 現在のモードID（リスタート用）
+
+  // ===== オンライン対戦（フェーズ1：座標同期・ゴースト表示） =====
+  private network = new NetworkManager();
+  private lobby = new RoomLobbyUI();
+  private remotePlayers = new Map<string, RemotePlayer>();
+  private online = false; // オンラインセッション中か
+  private onlineWired = false; // ネットワークイベントを結線済みか
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -182,14 +193,22 @@ export class Game {
     this.screen = "menu";
     this.paused = true;
     this.melee.cancel();
+    if (this.online) this.leaveOnline();
     this.modeManager.stop(this.ctx);
+    const items = this.modeManager.list().map((m) => ({
+      id: m.id,
+      label: m.label,
+      description: m.description,
+    }));
+    items.push({
+      id: "__online__",
+      label: "オンライン対戦",
+      description: "ルームコードで対戦（フェーズ1：座標同期）",
+    });
     this.ui.showMenu(
-      this.modeManager.list().map((m) => ({
-        id: m.id,
-        label: m.label,
-        description: m.description,
-      })),
-      (id: string) => this.beginMode(id),
+      items,
+      (id: string) =>
+        id === "__online__" ? this.openLobby() : this.beginMode(id),
       STAGE_LIST,
       this.selectedStageId,
       (sid: string) => {
@@ -238,6 +257,158 @@ export class Game {
     const s = this.stage.playerSpawn;
     this.player.respawn(s.x, s.y, s.z);
     this.paused = false;
+  }
+
+  // 接続先のWebSocket URL（本番は VITE_WS_URL、未設定ならローカル）。
+  private wsUrl(): string {
+    const meta = import.meta as unknown as {
+      env?: { VITE_WS_URL?: string };
+    };
+    return meta.env?.VITE_WS_URL || "ws://localhost:8080";
+  }
+
+  // ロビーを開く。ネットワークイベントを1回だけ結線し、作成/参加の操作を受ける。
+  private openLobby(): void {
+    this.wireNetwork();
+    const url = this.wsUrl();
+    this.lobby.show({
+      onCreate: () => {
+        this.ensureConnected(url)
+          .then(() =>
+            this.network
+              .createRoom(2, "online", this.selectedStageId)
+              .then(({ roomCode }) => {
+                this.lobby.setCode(roomCode);
+                this.lobby.setRoster(
+                  this.network.players.length,
+                  2,
+                  this.network.isHost
+                );
+              })
+          )
+          .catch(() => this.lobby.setError("サーバーに接続できませんでした"));
+      },
+      onJoin: (code: string) => {
+        this.ensureConnected(url)
+          .then(() =>
+            this.network
+              .joinRoom(code)
+              .then(() => {
+                this.lobby.setCode(code);
+                this.lobby.setRoster(
+                  this.network.players.length,
+                  2,
+                  this.network.isHost
+                );
+              })
+              .catch((e: unknown) => this.lobby.setError(this.errMessage(e)))
+          )
+          .catch(() => this.lobby.setError("サーバーに接続できませんでした"));
+      },
+      onStart: () => this.network.startGame(),
+      onClose: () => {
+        this.lobby.hide();
+        this.network.disconnect();
+      },
+    });
+  }
+
+  private ensureConnected(url: string): Promise<void> {
+    if (this.network.isConnected()) return Promise.resolve();
+    return this.network.connect(url);
+  }
+
+  // ネットワークイベントの結線（1回だけ）。
+  private wireNetwork(): void {
+    if (this.onlineWired) return;
+    this.onlineWired = true;
+    this.network.on("roomUpdate", (players) => {
+      this.lobby.setRoster(players.length, 2, this.network.isHost);
+    });
+    this.network.on("gameStart", (info) => this.onGameStart(info.stage));
+    this.network.on("worldState", (world) => this.reconcileGhosts(world));
+    this.network.on("playerLeft", (info) => this.removeGhost(info.playerId));
+    this.network.on("error", (e) => this.lobby.setError(this.errMessage(e)));
+    this.network.on("close", () => {
+      if (this.online) this.leaveOnline();
+    });
+  }
+
+  // ホストの「ゲーム開始」でサーバーから GAME_START が来たとき。
+  // フェーズ1はモードを起動せず、自由移動でゴースト表示のみ行う。
+  private onGameStart(stage: string): void {
+    this.lobby.hide();
+    this.ui.hideAll();
+    this.screen = "playing";
+    this.suppressUnlockMenu = false;
+    if (TouchControls.isTouchDevice()) this.touch.enable();
+    else this.input.requestLock();
+
+    this.melee.cancel();
+    this.modeManager.stop(this.ctx);
+    const sid: StageId =
+      stage === "dusk" || stage === "skyframe"
+        ? (stage as StageId)
+        : this.selectedStageId;
+    this.switchStage(sid);
+    const sp = this.stage.playerSpawn;
+    this.player.respawn(sp.x, sp.y, sp.z);
+    this.health.reset(100);
+    this.online = true;
+    this.paused = false;
+  }
+
+  // 自分の状態送信＋全ゴーストの補間更新（毎フレーム）。
+  private updateOnline(): void {
+    const p = this.player;
+    const state: PlayerState = {
+      playerId: this.network.playerId,
+      position: { x: p.position.x, y: p.position.y, z: p.position.z },
+      velocity: { x: p.velocity.x, y: p.velocity.y, z: p.velocity.z },
+      yaw: this.input.getYaw(),
+      pitch: this.input.getPitch(),
+      hp: this.health.getCurrent(),
+      onGround: p.grounded,
+    };
+    this.network.sendPlayerState(state);
+    for (const rp of this.remotePlayers.values()) rp.update(100); // renderDelay 100ms
+  }
+
+  // 受信した世界状態でゴーストを作成/更新する。
+  private reconcileGhosts(world: WorldState): void {
+    if (!this.online) return;
+    for (const ps of world.players) {
+      if (ps.playerId === this.network.playerId) continue;
+      let rp = this.remotePlayers.get(ps.playerId);
+      if (!rp) {
+        rp = new RemotePlayer(ps.playerId);
+        this.remotePlayers.set(ps.playerId, rp);
+        this.scene.add(rp.group);
+      }
+      rp.receiveState(ps);
+    }
+  }
+
+  private removeGhost(id: string): void {
+    const rp = this.remotePlayers.get(id);
+    if (rp) {
+      this.scene.remove(rp.group);
+      rp.dispose();
+      this.remotePlayers.delete(id);
+    }
+  }
+
+  // オンラインセッションを抜ける（ゴースト除去・切断）。
+  private leaveOnline(): void {
+    this.online = false;
+    for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);
+    this.network.leaveRoom();
+    this.network.disconnect();
+  }
+
+  private errMessage(e: unknown): string {
+    const o = e as { code?: string; message?: string };
+    return `${o.message ?? "エラー"}（コード: ${o.code ?? "ERR"}）`;
   }
 
   // モードが終了したとき（結果を表示し、操作を止める）
@@ -322,6 +493,9 @@ export class Game {
     this.player.getEyePosition(this.eye);
     this.camera.position.copy(this.eye);
     this.camera.rotation.set(this.input.getPitch(), this.input.getYaw(), 0, "YXZ");
+
+    // オンライン中：自分の状態を送信し、他プレイヤーのゴーストを補間更新する
+    if (this.online) this.updateOnline();
 
     // 武器更新（速度連動FOVにランジ状態を反映）
     this.weapons.setMeleeLunging(this.melee.lungeActive());

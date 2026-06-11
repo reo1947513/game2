@@ -190,6 +190,9 @@ export class Game {
     const now = performance.now() / 1000;
     this.melee.cancel();
     this.modeManager.start(id, this.ctx, now);
+    // ステージのスポーン地点から開始する（SKYFRAMEは南ゲート前）
+    const s = this.stage.playerSpawn;
+    this.player.respawn(s.x, s.y, s.z);
     this.paused = false;
   }
 

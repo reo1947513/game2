@@ -981,7 +981,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
     ctx.health.reset(100);
     ctx.health.show();
     ctx.ui.showHud(true);
-    ctx.player.respawn(0, 0, 8); // 初期位置から開始
+    ctx.player.respawn(ctx.stage.playerSpawn.x, ctx.stage.playerSpawn.y, ctx.stage.playerSpawn.z); // 初期位置から開始
 
     ctx.weapons.enemyHitHook = (obj: THREE.Object3D, damage: number) =>
       this.onBotShot(obj, damage);
@@ -1056,7 +1056,7 @@ export class BotDeathmatch implements GameMode, MeleeTargetProvider {
 
     // プレイヤーの復活
     if (this.playerDead && now >= this.playerRespawnAt) {
-      ctx.player.respawn(0, 0, 8);
+      ctx.player.respawn(ctx.stage.playerSpawn.x, ctx.stage.playerSpawn.y, ctx.stage.playerSpawn.z);
       ctx.health.reset(100);
       this.playerDead = false;
     }

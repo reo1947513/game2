@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { buildSkyframe } from "./stages/Skyframe";
 
 // 撃てる的（ターゲット）1体分の情報
 export interface Target {
@@ -10,50 +11,60 @@ export interface Target {
   userHits?: number; // 累積ダメージ（アサルトなど複数発で倒す武器用）
 }
 
-// ステージの中身（見た目のメッシュ群と、当たり判定用の箱の一覧）
+// 各ステージのbuild関数へ渡す道具一式。box追加・的追加・毎フレーム更新の登録ができる。
+export interface StageContext {
+  scene: THREE.Scene;
+  group: THREE.Group;
+  colliders: THREE.Box3[];
+  targets: Target[];
+  // 見た目と当たり判定を同時に登録する箱。collidable=false で視覚専用。
+  addBox: (
+    sx: number,
+    sy: number,
+    sz: number,
+    x: number,
+    y: number,
+    z: number,
+    color: number,
+    collidable?: boolean
+  ) => THREE.Mesh;
+  // 毎フレーム呼ばれる更新関数を登録する（障害灯の明滅・溶接火花など）。
+  addUpdater: (fn: (now: number) => void) => void;
+}
+
+// 登録されているステージのID
+export type StageId = "dusk" | "skyframe";
+
+// ステージの中身（見た目のメッシュ群と、当たり判定用の箱の一覧）。
+// ステージ登録制：構築時にIDで選んだステージのbuild関数を実行する。
 export class Stage {
   readonly group = new THREE.Group();
   readonly colliders: THREE.Box3[] = [];
   readonly targets: Target[] = [];
+  // プレイヤーの開始・復活位置（ステージごとに異なる）
+  readonly playerSpawn = new THREE.Vector3(0, 0, 8);
 
-  constructor(scene: THREE.Scene) {
-    this.buildLights(scene);
-    this.buildEnvironment(scene);
-    this.buildGround();
-    this.buildBoundary();
-    this.buildObstacles();
-    this.buildWallJumpWalls();
-    this.buildTargets();
+  // 毎フレーム動かす要素（障害灯の明滅・溶接火花など）
+  private dynamicUpdaters: Array<(now: number) => void> = [];
+
+  constructor(scene: THREE.Scene, stageId: StageId = "skyframe") {
+    if (stageId === "dusk") {
+      this.buildDusk(scene);
+      this.playerSpawn.set(0, 0, 8);
+    } else {
+      const ctx: StageContext = {
+        scene,
+        group: this.group,
+        colliders: this.colliders,
+        targets: this.targets,
+        addBox: (sx, sy, sz, x, y, z, color, collidable = true) =>
+          this.addBox(sx, sy, sz, x, y, z, color, collidable),
+        addUpdater: (fn) => this.dynamicUpdaters.push(fn),
+      };
+      const spawn = buildSkyframe(ctx);
+      this.playerSpawn.copy(spawn);
+    }
     scene.add(this.group);
-  }
-
-  // ----- ライティング -----
-  private buildLights(scene: THREE.Scene): void {
-    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
-    scene.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xfff1d0, 2.0);
-    sun.position.set(30, 50, 20);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 160;
-    const d = 60;
-    sun.shadow.camera.left = -d;
-    sun.shadow.camera.right = d;
-    sun.shadow.camera.top = d;
-    sun.shadow.camera.bottom = -d;
-    scene.add(sun);
-
-    // 黒〜濃紺の背景に金色系のフォグで、指定の雰囲気に寄せています
-    const fill = new THREE.HemisphereLight(0x6a7a99, 0x1a140a, 0.9);
-    scene.add(fill);
-  }
-
-  private buildEnvironment(scene: THREE.Scene): void {
-    // 暗すぎないよう背景をやや持ち上げ、霧も遠くからに緩めてステージを見やすくする
-    scene.background = new THREE.Color(0x161a22);
-    scene.fog = new THREE.Fog(0x161a22, 70, 220);
   }
 
   // 箱を作って「見た目」と「当たり判定」を同時に登録する補助関数
@@ -86,8 +97,48 @@ export class Stage {
     return mesh;
   }
 
+  // ===== STAGE 01 — DUSK DISTRICT（既存ステージ。数値・配置とも温存） =====
+  private buildDusk(scene: THREE.Scene): void {
+    this.buildDuskLights(scene);
+    this.buildDuskEnvironment(scene);
+    this.buildDuskGround();
+    this.buildDuskBoundary();
+    this.buildDuskObstacles();
+    this.buildDuskWallJumpWalls();
+    this.buildDuskTargets();
+  }
+
+  // ----- ライティング -----
+  private buildDuskLights(scene: THREE.Scene): void {
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xfff1d0, 2.0);
+    sun.position.set(30, 50, 20);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 160;
+    const d = 60;
+    sun.shadow.camera.left = -d;
+    sun.shadow.camera.right = d;
+    sun.shadow.camera.top = d;
+    sun.shadow.camera.bottom = -d;
+    scene.add(sun);
+
+    // 黒〜濃紺の背景に金色系のフォグで、指定の雰囲気に寄せています
+    const fill = new THREE.HemisphereLight(0x6a7a99, 0x1a140a, 0.9);
+    scene.add(fill);
+  }
+
+  private buildDuskEnvironment(scene: THREE.Scene): void {
+    // 暗すぎないよう背景をやや持ち上げ、霧も遠くからに緩めてステージを見やすくする
+    scene.background = new THREE.Color(0x161a22);
+    scene.fog = new THREE.Fog(0x161a22, 70, 220);
+  }
+
   // ----- 地面 -----
-  private buildGround(): void {
+  private buildDuskGround(): void {
     // 見た目用の床
     const floorGeo = new THREE.PlaneGeometry(120, 120, 1, 1);
     const floorMat = new THREE.MeshStandardMaterial({
@@ -117,7 +168,7 @@ export class Stage {
   }
 
   // ----- 外周の壁 -----
-  private buildBoundary(): void {
+  private buildDuskBoundary(): void {
     const h = 8;
     const t = 1;
     const half = 30;
@@ -133,7 +184,7 @@ export class Stage {
   }
 
   // ----- 段差・足場（パルクール用） -----
-  private buildObstacles(): void {
+  private buildDuskObstacles(): void {
     // 中央の階段状ブロック（飛び乗り＆2段ジャンプの練習）
     this.addBox(4, 1, 4, 0, 0.5, 0, 0x2c3742);
     this.addBox(4, 2, 4, 6, 1, 0, 0x33414e);
@@ -164,7 +215,7 @@ export class Stage {
   }
 
   // ----- 壁ジャンプ用の縦壁 -----
-  private buildWallJumpWalls(): void {
+  private buildDuskWallJumpWalls(): void {
     // 向かい合う2枚の壁。間を壁ジャンプで上へ登れる
     this.addBox(1, 7, 6, 22, 3.5, -10, 0x4a3a2a);
     this.addBox(1, 7, 6, 26, 3.5, -10, 0x4a3a2a);
@@ -173,7 +224,7 @@ export class Stage {
   }
 
   // ----- 撃てる的 -----
-  private buildTargets(): void {
+  private buildDuskTargets(): void {
     const positions: Array<[number, number, number]> = [
       [0, 1.2, -20],
       [10, 1.2, -22],
@@ -206,7 +257,7 @@ export class Stage {
     }
   }
 
-  // 的の復活処理（毎フレーム呼ぶ）
+  // 的の復活処理＋ステージの動的要素の更新（毎フレーム呼ぶ）
   updateTargets(now: number): void {
     for (const t of this.targets) {
       if (!t.alive && now >= t.respawnAt) {
@@ -216,6 +267,7 @@ export class Stage {
         (t.mesh.material as THREE.MeshStandardMaterial).emissive.set(0x551a10);
       }
     }
+    for (const u of this.dynamicUpdaters) u(now);
   }
 
   // 的に当たった時の処理。2秒後に復活させる。

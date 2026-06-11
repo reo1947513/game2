@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Stage, Target } from "./Stage";
+import { Stage, StageId, Target } from "./Stage";
 import { WeaponSystem } from "./WeaponSystem";
 import { ModeUI } from "./ModeUI";
 import { PlayerController } from "./PlayerController";
@@ -30,6 +30,9 @@ export interface GameMode {
   id: string;
   label: string;
   description: string;
+  // 設定するとこのモードは常にそのステージで起動する（メニューの選択を無視）。
+  // 未設定ならメニューで選択中のステージで起動する。
+  fixedStage?: StageId;
   enter(ctx: GameContext, now: number): void;
   update(ctx: GameContext, dt: number, now: number): void;
   exit(ctx: GameContext): void;

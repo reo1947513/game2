@@ -92,6 +92,12 @@ export class WeaponSystem {
     this.hud.setWeaponName(this.weapons.get(this.current)!.spec.displayName);
 
     // 射撃対象となるメッシュを集めておく（壁・床・的など）
+    this.refreshShootables();
+  }
+
+  // ステージの再ロード後などに、射撃対象メッシュを集め直す。
+  refreshShootables(): void {
+    this.shootables = [];
     this.stage.group.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) this.shootables.push(o);
     });

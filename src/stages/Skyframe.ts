@@ -34,7 +34,7 @@ const SH = 2.3; // シャフト外面の半幅（内法4.0＝内面±2.0、厚0.
 
 // SKYFRAMEを構築し、プレイヤーのスポーン位置を返す。
 export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
-  const { scene, group, colliders, targets, addBox, addUpdater } = ctx;
+  const { scene, group, colliders, targets, addBox, addUpdater, addLight } = ctx;
 
   // 上面を topY に合わせた水平スラブ（床板）。span から箱寸法を作る。
   const slab = (
@@ -145,7 +145,7 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
     addBox(0.5, 0.34, 0.28, x, headY, z, 0xe8ecf5, false);
     const light = new THREE.PointLight(C_FLOOD, intensity, dist, 1.6);
     light.position.set(x, headY, z);
-    scene.add(light);
+    addLight(light);
   };
 
   // ====================================================================
@@ -155,7 +155,7 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   scene.fog = new THREE.Fog(0x141b2a, 55, 150);
 
   const amb = new THREE.AmbientLight(0x2a3a54, 0.6);
-  scene.add(amb);
+  addLight(amb);
 
   // 月光（寒色のDirectionalLight・影あり）1灯のみ
   const moon = new THREE.DirectionalLight(0x9fb4e0, 0.95);
@@ -169,10 +169,10 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   moon.shadow.camera.right = sd;
   moon.shadow.camera.top = sd;
   moon.shadow.camera.bottom = -sd;
-  scene.add(moon);
+  addLight(moon);
 
   const hemi = new THREE.HemisphereLight(0x2a3c5c, 0x0a0e16, 0.55);
-  scene.add(hemi);
+  addLight(hemi);
 
   // 投光器：地上ヤードに4基、各フロアに1〜2基。全域を均一にはせず明暗の斑を残す。
   floodlight(-26, 30, 0, 1.9, 34); // 南西ヤード
@@ -370,7 +370,7 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   const jibLamp = vsphere(0.22, -3, jibY + 0.3, -14, 0xff2a2a, 1.2);
   const mastPL = new THREE.PointLight(0xff2a2a, 0.6, 12);
   mastPL.position.set(mastX, 15.2, mastZ);
-  scene.add(mastPL);
+  addLight(mastPL);
 
   // ====================================================================
   // 9. フロアごとの工程の物語＋建築ディテール語彙
@@ -435,7 +435,7 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   const weldY = ROOF + 0.5;
   const weldLight = new THREE.PointLight(0x9fc8ff, 0, 8);
   weldLight.position.set(weldX, weldY, weldZ);
-  scene.add(weldLight);
+  addLight(weldLight);
   const sparks: THREE.Mesh[] = [];
   const sparkMat = new THREE.MeshBasicMaterial({
     color: 0xbfe0ff,

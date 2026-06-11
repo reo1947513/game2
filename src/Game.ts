@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Input } from "./Input";
-import { Stage } from "./Stage";
+import { Stage, StageId, STAGE_LIST } from "./Stage";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 import { HUD } from "./HUD";
@@ -43,6 +43,8 @@ export class Game {
   private running = false;
   private paused = false;
   private wasDead = false; // 前フレームの戦闘中死亡状態（復活検知に使う）
+  private currentStageId: StageId = "skyframe"; // 現在ロード中のステージ
+  private selectedStageId: StageId = "skyframe"; // メニューで選択中のステージ
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -171,8 +173,21 @@ export class Game {
         label: m.label,
         description: m.description,
       })),
-      (id: string) => this.beginMode(id)
+      (id: string) => this.beginMode(id),
+      STAGE_LIST,
+      this.selectedStageId,
+      (sid: string) => {
+        this.selectedStageId = sid as StageId;
+      }
     );
+  }
+
+  // ステージを切り替える。コライダー配列の参照は維持されるが、射撃対象は集め直す。
+  private switchStage(id: StageId): void {
+    if (id === this.currentStageId) return;
+    this.stage.load(id);
+    this.currentStageId = id;
+    this.weapons.refreshShootables();
   }
 
   // 選んだモードで開始する
@@ -188,6 +203,9 @@ export class Game {
       this.input.requestLock();
     }
     const now = performance.now() / 1000;
+    // モードに固定ステージがあればそれを、無ければ選択中のステージをロードする
+    const mode = this.modeManager.get(id);
+    this.switchStage(mode?.fixedStage ?? this.selectedStageId);
     this.melee.cancel();
     this.modeManager.start(id, this.ctx, now);
     // ステージのスポーン地点から開始する（SKYFRAMEは南ゲート前）

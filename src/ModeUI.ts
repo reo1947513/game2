@@ -11,6 +11,7 @@ export class ModeUI {
   private root: HTMLElement;
   private menu: HTMLElement;
   private menuList: HTMLElement;
+  private stageRow: HTMLElement;
   private result: HTMLElement;
   private resultBody: HTMLElement;
   private resultBack: HTMLElement;
@@ -33,6 +34,16 @@ export class ModeUI {
     menuTitle.className = "mode-card-title";
     menuTitle.textContent = "モードを選ぶ";
     menuCard.appendChild(menuTitle);
+
+    // ステージ選択
+    const stageTitle = document.createElement("div");
+    stageTitle.className = "mode-sub-title";
+    stageTitle.textContent = "ステージ";
+    menuCard.appendChild(stageTitle);
+    this.stageRow = document.createElement("div");
+    this.stageRow.className = "stage-row";
+    menuCard.appendChild(this.stageRow);
+
     this.menuList = document.createElement("div");
     this.menuList.className = "mode-list";
     menuCard.appendChild(this.menuList);
@@ -62,10 +73,33 @@ export class ModeUI {
     this.root.appendChild(this.hud);
   }
 
-  // モード選択画面を表示する
-  showMenu(items: ModeMenuItem[], onSelect: (id: string) => void): void {
+  // モード選択画面を表示する（ステージ選択行つき）
+  showMenu(
+    items: ModeMenuItem[],
+    onSelect: (id: string) => void,
+    stages: Array<{ id: string; label: string }>,
+    selectedStage: string,
+    onStageSelect: (id: string) => void
+  ): void {
     this.hideResult();
     this.hideHud();
+
+    // ステージ選択ボタン群（選択中をハイライト）
+    this.stageRow.innerHTML = "";
+    const stageBtns: HTMLElement[] = [];
+    for (const s of stages) {
+      const sb = document.createElement("button");
+      sb.className = "stage-item" + (s.id === selectedStage ? " active" : "");
+      sb.textContent = s.label;
+      sb.addEventListener("click", () => {
+        onStageSelect(s.id);
+        for (const x of stageBtns) x.classList.remove("active");
+        sb.classList.add("active");
+      });
+      this.stageRow.appendChild(sb);
+      stageBtns.push(sb);
+    }
+
     this.menuList.innerHTML = "";
     for (const item of items) {
       const b = document.createElement("button");
@@ -165,6 +199,35 @@ export class ModeUI {
         font-size: 22px;
         font-weight: 800;
         text-align: center;
+      }
+      #mode-ui .mode-sub-title {
+        color: rgba(255, 220, 170, 0.85);
+        font-size: 14px;
+        font-weight: 700;
+      }
+      #mode-ui .stage-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #mode-ui .stage-item {
+        appearance: none;
+        border: 1px solid rgba(255, 200, 80, 0.4);
+        background: rgba(40, 36, 28, 0.6);
+        color: rgba(255, 230, 176, 0.85);
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      #mode-ui .stage-item:hover {
+        background: rgba(255, 170, 60, 0.18);
+      }
+      #mode-ui .stage-item.active {
+        background: rgba(255, 170, 60, 0.85);
+        color: #1a1206;
+        border-color: rgba(255, 170, 60, 0.9);
       }
       #mode-ui .mode-list {
         display: flex;

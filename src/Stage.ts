@@ -11,7 +11,7 @@ export interface Target {
   userHits?: number; // 累積ダメージ（アサルトなど複数発で倒す武器用）
 }
 
-// 各ステージのbuild関数へ渡す道具一式。box追加・的追加・毎フレーム更新の登録ができる。
+// 各ステージのbuild関数へ渡す道具一式。box追加・的追加・毎フレーム更新・ライト登録ができる。
 export interface StageContext {
   scene: THREE.Scene;
   group: THREE.Group;
@@ -30,13 +30,37 @@ export interface StageContext {
   ) => THREE.Mesh;
   // 毎フレーム呼ばれる更新関数を登録する（障害灯の明滅・溶接火花など）。
   addUpdater: (fn: (now: number) => void) => void;
+  // ライトを登録する（ステージ再ロード時に一括除去するため追跡する）。
+  addLight: (light: THREE.Object3D) => void;
 }
 
 // 登録されているステージのID
 export type StageId = "dusk" | "skyframe";
 
+// メニューに並べるステージ一覧（今後ステージを足すときはここに登録する）。
+export const STAGE_LIST: Array<{ id: StageId; label: string }> = [
+  { id: "skyframe", label: "SKYFRAME — 建設中ビル / 夜間" },
+  { id: "dusk", label: "DUSK DISTRICT — 市街 / 夕暮れ" },
+];
+
+// 破棄対象のメッシュ群のジオメトリ・マテリアルを解放する。
+function disposeObject(obj: THREE.Object3D): void {
+  obj.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    const mat = mesh.material;
+    if (Array.isArray(mat)) {
+      for (const m of mat) m.dispose();
+    } else if (mat) {
+      (mat as THREE.Material).dispose();
+    }
+  });
+}
+
 // ステージの中身（見た目のメッシュ群と、当たり判定用の箱の一覧）。
-// ステージ登録制：構築時にIDで選んだステージのbuild関数を実行する。
+// ステージ登録制：同一インスタンスへ load() で再ロードできる。group/colliders/targets の
+// 配列インスタンスは維持し、中身だけ入れ替えることで、外部（プレイヤーや武器）が握る参照を
+// 生かしたままステージを切り替えられる。
 export class Stage {
   readonly group = new THREE.Group();
   readonly colliders: THREE.Box3[] = [];
@@ -44,27 +68,73 @@ export class Stage {
   // プレイヤーの開始・復活位置（ステージごとに異なる）
   readonly playerSpawn = new THREE.Vector3(0, 0, 8);
 
+  // 現在のステージID
+  stageId: StageId;
+  private scene: THREE.Scene;
+  // ステージが追加したライト（再ロード時に一括で除去する）
+  private lights: THREE.Object3D[] = [];
   // 毎フレーム動かす要素（障害灯の明滅・溶接火花など）
   private dynamicUpdaters: Array<(now: number) => void> = [];
 
   constructor(scene: THREE.Scene, stageId: StageId = "skyframe") {
+    this.scene = scene;
+    this.stageId = stageId;
+    scene.add(this.group);
+    this.load(stageId);
+  }
+
+  // ステージを切り替える。参照（group/colliders/targets）は維持したまま中身を入れ替える。
+  load(stageId: StageId): void {
+    this.teardown();
+    this.stageId = stageId;
     if (stageId === "dusk") {
-      this.buildDusk(scene);
+      this.buildDusk();
       this.playerSpawn.set(0, 0, 8);
     } else {
-      const ctx: StageContext = {
-        scene,
-        group: this.group,
-        colliders: this.colliders,
-        targets: this.targets,
-        addBox: (sx, sy, sz, x, y, z, color, collidable = true) =>
-          this.addBox(sx, sy, sz, x, y, z, color, collidable),
-        addUpdater: (fn) => this.dynamicUpdaters.push(fn),
-      };
-      const spawn = buildSkyframe(ctx);
+      const spawn = buildSkyframe(this.makeContext());
       this.playerSpawn.copy(spawn);
     }
-    scene.add(this.group);
+  }
+
+  // skyframe など外部build関数へ渡す道具一式を作る。
+  private makeContext(): StageContext {
+    return {
+      scene: this.scene,
+      group: this.group,
+      colliders: this.colliders,
+      targets: this.targets,
+      addBox: (sx, sy, sz, x, y, z, color, collidable = true) =>
+        this.addBox(sx, sy, sz, x, y, z, color, collidable),
+      addUpdater: (fn) => this.dynamicUpdaters.push(fn),
+      addLight: (light) => this.addLight(light),
+    };
+  }
+
+  // ライトを scene に足しつつ追跡する（再ロード時に除去するため）。
+  private addLight(light: THREE.Object3D): void {
+    this.scene.add(light);
+    this.lights.push(light);
+  }
+
+  // 現在のステージの中身（メッシュ・ライト・コライダー・的・更新関数）を破棄する。
+  // 配列インスタンスは維持し、length=0 で詰め直すことで外部の参照を生かしたままにする。
+  private teardown(): void {
+    for (const l of this.lights) {
+      this.scene.remove(l);
+      // DirectionalLight などの影マップを解放する（繰り返し切替時のリーク防止）。
+      (l as unknown as { dispose?: () => void }).dispose?.();
+    }
+    this.lights = [];
+    for (let i = this.group.children.length - 1; i >= 0; i--) {
+      const c = this.group.children[i];
+      this.group.remove(c);
+      disposeObject(c);
+    }
+    this.colliders.length = 0;
+    this.targets.length = 0;
+    this.dynamicUpdaters.length = 0;
+    this.scene.fog = null;
+    this.scene.background = null;
   }
 
   // 箱を作って「見た目」と「当たり判定」を同時に登録する補助関数
@@ -98,9 +168,9 @@ export class Stage {
   }
 
   // ===== STAGE 01 — DUSK DISTRICT（既存ステージ。数値・配置とも温存） =====
-  private buildDusk(scene: THREE.Scene): void {
-    this.buildDuskLights(scene);
-    this.buildDuskEnvironment(scene);
+  private buildDusk(): void {
+    this.buildDuskLights();
+    this.buildDuskEnvironment();
     this.buildDuskGround();
     this.buildDuskBoundary();
     this.buildDuskObstacles();
@@ -109,9 +179,9 @@ export class Stage {
   }
 
   // ----- ライティング -----
-  private buildDuskLights(scene: THREE.Scene): void {
+  private buildDuskLights(): void {
     const ambient = new THREE.AmbientLight(0xffffff, 1.0);
-    scene.add(ambient);
+    this.addLight(ambient);
 
     const sun = new THREE.DirectionalLight(0xfff1d0, 2.0);
     sun.position.set(30, 50, 20);
@@ -124,17 +194,17 @@ export class Stage {
     sun.shadow.camera.right = d;
     sun.shadow.camera.top = d;
     sun.shadow.camera.bottom = -d;
-    scene.add(sun);
+    this.addLight(sun);
 
     // 黒〜濃紺の背景に金色系のフォグで、指定の雰囲気に寄せています
     const fill = new THREE.HemisphereLight(0x6a7a99, 0x1a140a, 0.9);
-    scene.add(fill);
+    this.addLight(fill);
   }
 
-  private buildDuskEnvironment(scene: THREE.Scene): void {
+  private buildDuskEnvironment(): void {
     // 暗すぎないよう背景をやや持ち上げ、霧も遠くからに緩めてステージを見やすくする
-    scene.background = new THREE.Color(0x161a22);
-    scene.fog = new THREE.Fog(0x161a22, 70, 220);
+    this.scene.background = new THREE.Color(0x161a22);
+    this.scene.fog = new THREE.Fog(0x161a22, 70, 220);
   }
 
   // ----- 地面 -----

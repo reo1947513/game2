@@ -24,6 +24,8 @@ export class GrenadeSystem {
   private readonly FLASH_FUSE = 1.4;
   private readonly FRAG_RADIUS = 6.0;
   private readonly FLASH_RADIUS = 18.0;
+  private readonly THROW_RIGHT = 0.35; // 投擲スポーンを右へずらす量（m）
+  private readonly AIM_DIST = 14.0; // 照準線上のこの距離の点へ向けて投げる（右→正面へ収束）
 
   // ----- 状態 -----
   private fragAmmo = this.FRAG_MAX;
@@ -49,6 +51,7 @@ export class GrenadeSystem {
   // 作業用ベクトル
   private readonly camPos = new THREE.Vector3();
   private readonly camDir = new THREE.Vector3();
+  private readonly right = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
 
   constructor(
@@ -135,17 +138,18 @@ export class GrenadeSystem {
   }
 
   // フラグの放物線を、最初に床へ落ちる地点まで描く（バウンド前まで）。
+  // 実際の投擲と同じ aimThrow を使うので、弧と着弾は投げた結果と一致する。
   private showFragPreview(): void {
-    this.camera.getWorldPosition(this.camPos);
-    this.camera.getWorldDirection(this.camDir);
-    const pv = this.player.velocity;
+    const origin = new THREE.Vector3();
+    const vel = new THREE.Vector3();
+    this.aimThrow(origin, vel);
 
-    let px = this.camPos.x + this.camDir.x * 0.5;
-    let py = this.camPos.y + this.camDir.y * 0.5 - 0.1;
-    let pz = this.camPos.z + this.camDir.z * 0.5;
-    let vx = this.camDir.x * 15 + pv.x * 0.6;
-    let vy = this.camDir.y * 15 + 3.5;
-    let vz = this.camDir.z * 15 + pv.z * 0.6;
+    let px = origin.x;
+    let py = origin.y;
+    let pz = origin.z;
+    let vx = vel.x;
+    let vy = vel.y;
+    let vz = vel.z;
 
     const G = 26;
     const step = 0.04;
@@ -203,24 +207,36 @@ export class GrenadeSystem {
     this.updateHud();
   }
 
-  private spawn(type: GrenadeType): void {
+  // 投擲のスポーン位置と初速を求める。右手から投げるように、発射点をカメラの右へ
+  // ずらし、照準線上の前方の点へ向けて投げる（右斜め前→正面へ収束する軌道）。
+  // 実際の投擲とプレビューで同じ計算を使い、見た目と着弾を一致させる。
+  private aimThrow(origin: THREE.Vector3, vel: THREE.Vector3): void {
     this.camera.getWorldPosition(this.camPos);
-    this.camera.getWorldDirection(this.camDir); // 正規化済み
+    this.camera.getWorldDirection(this.camDir); // 正規化済み・matrixWorldも更新される
+    this.right.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize(); // カメラの右方向
 
-    // スポーン位置：カメラ前方0.5m、さらに少し下げる
-    const origin = this.tmp
+    // スポーン位置：前方0.5m＋右へ THROW_RIGHT、さらに少し下げる
+    origin
       .copy(this.camPos)
       .addScaledVector(this.camDir, 0.5)
-      .clone();
+      .addScaledVector(this.right, this.THROW_RIGHT);
     origin.y -= 0.1;
 
-    // 初速：視線×15＋上3.5＋自速の慣性
+    // 照準線上の前方の点（収束先）へ向けて投げる
+    const aim = this.tmp.copy(this.camPos).addScaledVector(this.camDir, this.AIM_DIST);
+    vel.copy(aim).sub(origin).normalize().multiplyScalar(15);
+    vel.y += 3.5;
+
+    // 走り投げの慣性を乗せる
     const pv = this.player.velocity;
-    const vel = new THREE.Vector3(
-      this.camDir.x * 15 + pv.x * 0.6,
-      this.camDir.y * 15 + 3.5,
-      this.camDir.z * 15 + pv.z * 0.6
-    );
+    vel.x += pv.x * 0.6;
+    vel.z += pv.z * 0.6;
+  }
+
+  private spawn(type: GrenadeType): void {
+    const origin = new THREE.Vector3();
+    const vel = new THREE.Vector3();
+    this.aimThrow(origin, vel);
 
     // スピン（各軸 −3〜+3 rad/s）
     const spin = new THREE.Vector3(

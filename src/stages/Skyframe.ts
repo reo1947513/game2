@@ -151,14 +151,14 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   // ====================================================================
   // 1. ライティング・空気感（夜間工事）
   // ====================================================================
-  scene.background = new THREE.Color(0x0b0e16);
-  scene.fog = new THREE.Fog(0x0b0e16, 34, 130);
+  scene.background = new THREE.Color(0x141b2a);
+  scene.fog = new THREE.Fog(0x141b2a, 55, 150);
 
-  const amb = new THREE.AmbientLight(0x223044, 0.26);
+  const amb = new THREE.AmbientLight(0x2a3a54, 0.6);
   scene.add(amb);
 
-  // 月光（弱い寒色のDirectionalLight・影あり）1灯のみ
-  const moon = new THREE.DirectionalLight(0x7e96c8, 0.55);
+  // 月光（寒色のDirectionalLight・影あり）1灯のみ
+  const moon = new THREE.DirectionalLight(0x9fb4e0, 0.95);
   moon.position.set(-55, 85, -45);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -171,17 +171,17 @@ export function buildSkyframe(ctx: StageContext): THREE.Vector3 {
   moon.shadow.camera.bottom = -sd;
   scene.add(moon);
 
-  const hemi = new THREE.HemisphereLight(0x1a2740, 0x05070c, 0.3);
+  const hemi = new THREE.HemisphereLight(0x2a3c5c, 0x0a0e16, 0.55);
   scene.add(hemi);
 
-  // 投光器：地上ヤードに4基、各フロアに1〜2基。全域を均一に照らさず暗がりを残す。
-  floodlight(-26, 30, 0, 1.5, 30); // 南西ヤード
-  floodlight(28, 22, 0, 1.4, 28); // 南東ヤード
-  floodlight(-34, -20, 0, 1.4, 30); // 北西（クレーン寄り）
-  floodlight(20, -30, 0, 1.3, 26); // 北東ヤード
-  floodlight(10, F2, -10, 1.0, 16); // 2F
-  floodlight(-9, F3, 7, 1.0, 16); // 3F
-  floodlight(12, ROOF, 10, 1.1, 18); // 屋上
+  // 投光器：地上ヤードに4基、各フロアに1〜2基。全域を均一にはせず明暗の斑を残す。
+  floodlight(-26, 30, 0, 1.9, 34); // 南西ヤード
+  floodlight(28, 22, 0, 1.8, 32); // 南東ヤード
+  floodlight(-34, -20, 0, 1.8, 34); // 北西（クレーン寄り）
+  floodlight(20, -30, 0, 1.7, 30); // 北東ヤード
+  floodlight(10, F2, -10, 1.3, 18); // 2F
+  floodlight(-9, F3, 7, 1.3, 18); // 3F
+  floodlight(12, ROOF, 10, 1.4, 20); // 屋上
 
   // ====================================================================
   // 2. 地面・外周（±70）

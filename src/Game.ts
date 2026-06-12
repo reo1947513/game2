@@ -23,6 +23,9 @@ import {
   ServerEnemyState,
   ZiplineState,
   roofSpawnPoints,
+  BUILDINGS,
+  type BuildingId,
+  type BuildingDef,
 } from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
@@ -97,6 +100,17 @@ export class Game {
   private spectatingTarget: string | null = null; // サバイバル脱落後に追従する生存者ID
   private swayPhase = 0; // スナイパー息継ぎ揺れの位相
   private holdBreathTime = 0; // 止息（Shift長押し）の経過秒
+  // ルーフトップの演出：収縮ゾーンの赤フォグ markers と、ジップライン滑走スパーク。
+  private dangerMarkers = new Map<BuildingId, THREE.Object3D>();
+  private sparks: Array<{ mesh: THREE.Mesh; life: number; vel: THREE.Vector3 }> = [];
+  private sparkGeo = new THREE.PlaneGeometry(0.09, 0.09);
+  private sparkMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -442,6 +456,7 @@ export class Game {
     this.ziplineRide = null;
     this.rooftopRound = 0;
     this.spectatingTarget = null;
+    this.clearRooftopFx();
     this.melee.onSwingHit = null;
     this.player.setSpeedCap(null);
     if (mode === "tdm") {
@@ -485,6 +500,105 @@ export class Game {
     this.ziplineRide = null;
   }
 
+  // ===== ルーフトップ演出（収縮ゾーンの赤フォグ／ジップライン滑走スパーク）=====
+  private makeDangerMarker(b: BuildingDef): THREE.Object3D {
+    const g = new THREE.Group();
+    const h = 8;
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(b.sizeX, h, b.sizeZ),
+      new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.12, depthWrite: false })
+    );
+    box.position.set(b.cx, b.roofY + h / 2, b.cz);
+    g.add(box);
+    const light = new THREE.PointLight(0xff3020, 1.2, 32, 2);
+    light.position.set(b.cx, b.roofY + 4, b.cz);
+    g.add(light);
+    return g;
+  }
+
+  private disposeMarker(m: THREE.Object3D): void {
+    m.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const mat = mesh.material as THREE.Material | undefined;
+      if (mat && typeof mat.dispose === "function") mat.dispose();
+    });
+  }
+
+  // 危険ゾーン（サバイバル収縮）の赤フォグを world.rooftop.dangerZones と同期する。
+  private syncDangerZones(zones: BuildingId[]): void {
+    for (const id of zones) {
+      if (!this.dangerMarkers.has(id)) {
+        const b = BUILDINGS.find((x) => x.id === id);
+        if (b) {
+          const m = this.makeDangerMarker(b);
+          this.scene.add(m);
+          this.dangerMarkers.set(id, m);
+        }
+      }
+    }
+    for (const [id, m] of this.dangerMarkers) {
+      if (!zones.includes(id)) {
+        this.scene.remove(m);
+        this.disposeMarker(m);
+        this.dangerMarkers.delete(id);
+      }
+    }
+  }
+
+  // ジップライン滑走中、ワイヤ接点（プレイヤー頭上）に白いスパークを散らす。
+  private spawnZiplineSpark(): void {
+    if (this.sparks.length > 40) return;
+    const p = this.player.position;
+    const m = new THREE.Mesh(this.sparkGeo, this.sparkMat);
+    m.position.set(
+      p.x + (Math.random() - 0.5) * 0.25,
+      p.y + 1.75 + (Math.random() - 0.5) * 0.12,
+      p.z + (Math.random() - 0.5) * 0.25
+    );
+    this.scene.add(m);
+    this.sparks.push({
+      mesh: m,
+      life: 0.25,
+      vel: new THREE.Vector3((Math.random() - 0.5) * 2, -Math.random() * 2.5, (Math.random() - 0.5) * 2),
+    });
+  }
+
+  // 毎フレーム：スパークの寿命更新と、危険ゾーン光の脈動。
+  private updateRooftopFx(dt: number): void {
+    for (let i = this.sparks.length - 1; i >= 0; i--) {
+      const s = this.sparks[i];
+      s.life -= dt;
+      s.mesh.position.addScaledVector(s.vel, dt);
+      s.mesh.scale.setScalar(Math.max(0, s.life / 0.25));
+      s.mesh.lookAt(this.camera.position);
+      if (s.life <= 0) {
+        this.scene.remove(s.mesh);
+        this.sparks.splice(i, 1);
+      }
+    }
+    if (this.dangerMarkers.size > 0) {
+      const pulse = 1.0 + Math.sin(performance.now() / 220) * 0.45;
+      for (const m of this.dangerMarkers.values()) {
+        for (const c of m.children) {
+          const light = c as THREE.PointLight;
+          if (light.isPointLight) light.intensity = pulse;
+        }
+      }
+    }
+  }
+
+  // ルーフトップ演出を全消去（開始/離脱時）。
+  private clearRooftopFx(): void {
+    for (const m of this.dangerMarkers.values()) {
+      this.scene.remove(m);
+      this.disposeMarker(m);
+    }
+    this.dangerMarkers.clear();
+    for (const s of this.sparks) this.scene.remove(s.mesh);
+    this.sparks = [];
+  }
+
   // ROOFTOP DUEL：ジップラインの乗降。滑走中は true を返して通常移動をスキップさせる。
   // サーバーへ承認要求（useZipline）を送りつつ、クライアントがワイヤ上を滑走する。
   // 起点付近で[E]→滑走開始、滑走中に[E]→途中離脱（落下）、終点到達で自動降車。
@@ -509,6 +623,7 @@ export class Game {
         r.from.z + (r.to.z - r.from.z) * k
       );
       this.player.velocity.set(0, 0, 0);
+      this.spawnZiplineSpark();
       if (k >= 1) {
         this.ziplineRide = null;
         this.rooftopHud.setZiplinePrompt(false);
@@ -657,6 +772,7 @@ export class Game {
 
     if (this.isRooftop() && world.rooftop) {
       this.rooftopZiplines = world.rooftop.ziplines;
+      this.syncDangerZones(world.rooftop.dangerZones);
       // サバイバル：ラウンドが進んだら自分を屋上スポーンへ再配置する（サーバーは全員HP全快）。
       if (world.rooftop.rule === "survival" && world.rooftop.round > this.rooftopRound) {
         const prev = this.rooftopRound;
@@ -801,6 +917,7 @@ export class Game {
     this.ziplineRide = null;
     this.rooftopRound = 0;
     this.spectatingTarget = null;
+    this.clearRooftopFx();
     this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();
@@ -975,6 +1092,9 @@ export class Game {
     } else {
       this.holdBreathTime = 0;
     }
+
+    // ルーフトップ演出（スパーク寿命・危険ゾーン脈動）を毎フレーム更新
+    this.updateRooftopFx(dt);
 
     // オンライン中：自分の状態を送信し、他プレイヤーのゴーストを補間更新する
     if (this.online) this.updateOnline(inputState, dt);

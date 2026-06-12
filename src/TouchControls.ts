@@ -1054,6 +1054,54 @@ export class TouchControls {
         -webkit-mask: url(/icon_knife.png) center / contain no-repeat;
         mask: url(/icon_knife.png) center / contain no-repeat;
       }
+      /* しゃがむボタンは膝つき人物シルエットを表示する。文字「しゃがむ」は隠す。 */
+      #touch-root .tc-btn[data-action="crouch"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="crouch"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 80%;
+        height: 80%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_crouch.png) center / contain no-repeat;
+        mask: url(/icon_crouch.png) center / contain no-repeat;
+      }
+      /* 伏せボタンはうつ伏せ人物シルエットを表示する。文字「伏せ」は隠す。 */
+      #touch-root .tc-btn[data-action="prone"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="prone"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 84%;
+        height: 84%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_prone.png) center / contain no-repeat;
+        mask: url(/icon_prone.png) center / contain no-repeat;
+      }
+      /* 手榴弾ボタンはグレネードのシルエットを表示する。文字「手榴弾」は隠す。 */
+      #touch-root .tc-btn[data-action="grenade"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="grenade"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 78%;
+        height: 78%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_grenade.png) center / contain no-repeat;
+        mask: url(/icon_grenade.png) center / contain no-repeat;
+      }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {
         border-style: dashed;

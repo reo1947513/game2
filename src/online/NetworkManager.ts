@@ -219,6 +219,12 @@ export class NetworkManager {
         this.emit("worldState", msg.payload);
         break;
       }
+      case "PONG": {
+        this.rtt = performance.now() - msg.payload.clientTime;
+        // eslint-disable-next-line no-console
+        console.log(`[online] RTT: ${this.rtt.toFixed(0)}ms`);
+        break;
+      }
       case "ERROR": {
         if (this.joinReject) {
           this.joinReject(msg.payload);

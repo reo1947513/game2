@@ -265,9 +265,9 @@ const STYLE = `
 }
 #home-screen .hs-row .hs-row-ico svg { width: 20px; height: 20px; }
 #home-screen .hs-row-text { min-width: 0; flex: 1; }
-#home-screen .hs-row-label { font-size: 14px; font-weight: 700; }
+#home-screen .hs-row-label { font-size: 14px; font-weight: 700; color: #f2f4f7; }
 #home-screen .hs-row-desc {
-  font-size: 11px; color: #8a93a0; margin-top: 3px;
+  font-size: 11px; color: #b4bcc6; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #home-screen .hs-row-chev { color: #6b7480; flex: none; }

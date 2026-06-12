@@ -14,10 +14,12 @@ import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
 import { HomeScreen } from "./ui/HomeScreen";
-import { PlayerState, WorldState, GameEvent, Team } from "./online/netTypes";
+import { PlayerState, WorldState, GameEvent, Team, ServerEnemyState } from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
+import { RemoteEnemy } from "./online/RemoteEnemy";
 import { TeamHUD } from "./ui/TeamHUD";
+import { CoopHUD } from "./ui/CoopHUD";
 import { InputState } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
@@ -70,9 +72,12 @@ export class Game {
   private remoteProjectiles = new Map<string, RemoteProjectile>(); // サーバー権威の弾
   private onlineSeq = 0; // 直近の入力seq
   private onlineThrowCd = 0; // オンライン投擲の共通クールダウン
-  private onlineMode = ""; // 現在のオンラインモード（"online"=自由 / "tdm"=チームデスマッチ）
+  private onlineMode = ""; // 現在のオンラインモード（"online"=自由 / "tdm" / "coop"）
   private teamHud = new TeamHUD(); // チームデスマッチ用HUD
   private tdmResultShown = false; // リザルトを表示済みか
+  private coopHud = new CoopHUD(); // コープ用HUD
+  private remoteEnemies = new Map<string, RemoteEnemy>(); // サーバー権威の敵ゴースト
+  private coopResultShown = false; // コープのリザルトを表示済みか
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -397,14 +402,20 @@ export class Game {
     }
     this.network.startPing();
 
-    // チームデスマッチ：チームHUDを表示し、近接の命中をサーバーへ通知する。
+    // モード別HUD・近接通知・速度制限の初期化
+    this.teamHud.hide();
+    this.coopHud.hide();
+    this.melee.onSwingHit = null;
+    this.player.setSpeedCap(null);
     if (mode === "tdm") {
       this.tdmResultShown = false;
       this.teamHud.show();
       this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
-    } else {
-      this.teamHud.hide();
-      this.melee.onSwingHit = null;
+    } else if (mode === "coop") {
+      this.coopResultShown = false;
+      this.coopHud.show();
+      // コープでも近接は敵に当たる
+      this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
     }
 
     this.online = true;
@@ -447,6 +458,12 @@ export class Game {
     }
 
     for (const rp of this.remotePlayers.values()) rp.update(100); // renderDelay 100ms
+
+    // コープ：敵ゴーストを毎フレーム滑らかに寄せ、蘇生入力（E長押し）を送る。
+    if (this.onlineMode === "coop") {
+      for (const re of this.remoteEnemies.values()) re.update(dt);
+      this.network.sendRevive(inputState.interactHeld);
+    }
   }
 
   // 受信した世界状態でゴースト・サーバー弾・HP・イベントを反映する。
@@ -494,6 +511,52 @@ export class Game {
         if (document.exitPointerLock) document.exitPointerLock();
         this.teamHud.showResult(world.tdm, () => this.showMenu());
       }
+    }
+
+    // コープ：敵描画・HUD更新・ダウン時の移動制限・終了時のリザルト。
+    if (this.onlineMode === "coop" && world.coop) {
+      this.syncEnemies(world.coop.enemies);
+      this.coopHud.update(world.coop, this.network.playerId, (id) => this.playerName(id));
+      const me = world.coop.players.find((p) => p.playerId === this.network.playerId);
+      if (me) {
+        if (me.status === "DOWN") this.player.setSpeedCap(1.5);
+        else if (me.status === "DEAD") this.player.setSpeedCap(0);
+        else this.player.setSpeedCap(null);
+      }
+      if (world.coop.phase === "RESULT" && !this.coopResultShown) {
+        this.coopResultShown = true;
+        this.suppressUnlockMenu = true;
+        if (document.exitPointerLock) document.exitPointerLock();
+        this.coopHud.showResult(world.coop, () => this.showMenu());
+      }
+    }
+  }
+
+  // サーバー権威の敵ゴーストを生成・更新・破棄する。
+  private syncEnemies(list: ServerEnemyState[]): void {
+    const seen = new Set<string>();
+    for (const es of list) {
+      seen.add(es.id);
+      let re = this.remoteEnemies.get(es.id);
+      if (!re) {
+        re = new RemoteEnemy(es);
+        this.remoteEnemies.set(es.id, re);
+        this.scene.add(re.group);
+      } else {
+        re.setState(es);
+      }
+    }
+    for (const id of [...this.remoteEnemies.keys()]) {
+      if (!seen.has(id)) this.removeEnemy(id);
+    }
+  }
+
+  private removeEnemy(id: string): void {
+    const re = this.remoteEnemies.get(id);
+    if (re) {
+      this.scene.remove(re.group);
+      re.dispose();
+      this.remoteEnemies.delete(id);
     }
   }
 
@@ -564,9 +627,12 @@ export class Game {
     this.weapons.onShot = null;
     this.melee.onSwingHit = null;
     this.teamHud.hide();
+    this.coopHud.hide();
+    this.player.setSpeedCap(null);
     this.network.stopPing();
     for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);
     for (const id of [...this.remoteProjectiles.keys()]) this.removeProjectile(id);
+    for (const id of [...this.remoteEnemies.keys()]) this.removeEnemy(id);
     this.predictor.reset();
     this.network.leaveRoom();
     this.network.disconnect();

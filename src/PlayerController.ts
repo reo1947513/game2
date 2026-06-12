@@ -42,6 +42,9 @@ export class PlayerController {
   private readonly WALL_JUMP_UP = 8.53; // 高さ1.3m相当
   private readonly WALL_JUMP_PUSH = 7.0; // 壁から離れる横方向の勢い
 
+  // 移動速度の上限（コープのダウン中=1.5、死亡=0 など）。nullで無制限。
+  private speedCap: number | null = null;
+
   // ----- 速度定数（m/s） -----
   private readonly SPEED_WALK = 5.0;
   private readonly SPEED_SPRINT = 8.5;
@@ -314,6 +317,8 @@ export class PlayerController {
     if (input.aiming && this.stance !== Stance.Slide) {
       speed *= 0.6;
     }
+    // 速度上限（コープのダウン中など）
+    if (this.speedCap !== null) speed = Math.min(speed, this.speedCap);
 
     const dir = this.moveDirFromInput(input);
     const desiredX = dir.x * speed;
@@ -325,6 +330,11 @@ export class PlayerController {
     const factor = 1 - Math.exp(-rate * dt);
     this.velocity.x += (desiredX - this.velocity.x) * factor;
     this.velocity.z += (desiredZ - this.velocity.z) * factor;
+  }
+
+  // 移動速度の上限を設定する（コープのダウン中=1.5など）。nullで解除。
+  setSpeedCap(v: number | null): void {
+    this.speedCap = v;
   }
 
   // 入力と視点から、進みたいワールド方向（水平）を求める

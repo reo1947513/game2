@@ -223,6 +223,7 @@ export class Input {
       fragHeld: this.fragHeldDown,
       fragReleased: this.fragReleasedQueued,
       flashThrow: this.flashQueued,
+      interactHeld: this.keys.has("KeyE"),
       yaw: this.yaw,
       pitch: this.pitch,
     };

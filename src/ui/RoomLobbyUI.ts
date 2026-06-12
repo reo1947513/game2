@@ -62,7 +62,8 @@ export class RoomLobbyUI {
     modeRow.style.cssText = "display:flex;gap:8px;margin-bottom:10px;";
     const modeOpts: Array<{ label: string; value: string }> = [
       { label: "チームデスマッチ", value: "tdm" },
-      { label: "オンライン自由", value: "online" },
+      { label: "コープ", value: "coop" },
+      { label: "自由", value: "online" },
     ];
     for (const o of modeOpts) {
       const b = document.createElement("button");
@@ -72,7 +73,8 @@ export class RoomLobbyUI {
       b.onclick = () => {
         this.selectedMode = o.value;
         for (const mb of this.modeBtns) paint(mb, mb === b);
-        this.sizeRow.style.display = o.value === "online" ? "none" : "flex";
+        // 人数選択はチームデスマッチのみ意味がある（コープ・自由は隠す）
+        this.sizeRow.style.display = o.value === "tdm" ? "flex" : "none";
       };
       this.modeBtns.push(b);
       modeRow.appendChild(b);
@@ -99,7 +101,12 @@ export class RoomLobbyUI {
     const createBtn = document.createElement("button");
     createBtn.className = "lobby-btn lobby-btn-primary";
     createBtn.textContent = "ルームを作成";
-    createBtn.onclick = () => this.cb?.onCreate(this.selectedMode, this.selectedMax);
+    createBtn.onclick = () => {
+      // チームデスマッチは人数選択、コープは最大3人、自由は最大4人。
+      const max =
+        this.selectedMode === "coop" ? 3 : this.selectedMode === "online" ? 4 : this.selectedMax;
+      this.cb?.onCreate(this.selectedMode, max);
+    };
     createSec.appendChild(createBtn);
 
     this.codeRow = document.createElement("div");

@@ -118,6 +118,14 @@ export class NetworkManager {
     this.send({ type: "MELEE_HIT", payload: { kind } });
   }
 
+  // 蘇生入力（Eキー長押し）の状態をサーバーへ送る（コープ用）。状態変化時のみ送る。
+  private lastRevive = false;
+  sendRevive(active: boolean): void {
+    if (active === this.lastRevive) return;
+    this.lastRevive = active;
+    this.send({ type: "REVIVE", payload: { active } });
+  }
+
   // 5秒ごとに PING を送って RTT を計測する。
   startPing(): void {
     this.stopPing();

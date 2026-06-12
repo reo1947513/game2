@@ -1,4 +1,12 @@
-import { GameMode, GameContext } from "../GameModes";
+import * as THREE from "three";
+import {
+  GameMode,
+  GameContext,
+  makeMeleeTargets,
+  resolveBodyCollisions,
+} from "../GameModes";
+import { EnemyUnit } from "../Enemy";
+import { MeleeTarget, MeleeTargetProvider } from "../combat/MeleeTarget";
 import { ModeHUD } from "../ui/ModeHUD";
 
 // ===== TOWER（100層フロア制）オフライン版 =====
@@ -6,14 +14,131 @@ import { ModeHUD } from "../ui/ModeHUD";
 // 1層から100層まで、各フロアの敵Waveを全滅させて上を目指すタワーモードです。
 // 10層ごとにボスフロアが配置され、100層をクリアすると「TOWER CLEARED」で終了します。
 //
-// このファイルは段階実装の「骨組み」です（タスク2）。
-//   - フロアの状態機械（カウントダウン→Wave→休憩→次層→…→クリア）
-//   - 100層のフロア進行とボスフロアの判定
-//   - 死亡・クリアの終了処理
-// 敵のスポーンと行動（6種）はタスク3〜4で、ボス5種はタスク5で、
-// 専用HUDとクリア演出はタスク6でこのファイルに差し込みます。
-// 骨組みでは敵が存在しないため、各Waveは短い待機後にクリア扱いとして
-// 進行とエンディングだけを先に検証できるようにしています（spawnWave 内のコメント参照）。
+// 段階実装の現在地（タスク3）：
+//   - フロアの状態機械（カウントダウン→Wave→休憩→次層→…→クリア）  ※タスク2
+//   - 敵6種のスポーン・見た目・ステータス・基本接近・撃破・全滅判定    ※タスク3（本コミット）
+// 残り：
+//   - 敵6種の固有行動（遠距離射撃・爆発・召喚など）                  ※タスク4
+//   - ボス5種の状態機械                                             ※タスク5
+//   - 専用FloorHUD / BossHUD / クリア演出                           ※タスク6
+//
+// ボスフロアはタスク5まで暫定プレースホルダ（短い待機で消化）のままです。
+
+// 敵6種。
+export type EnemyType =
+  | "standard"
+  | "fast"
+  | "tank"
+  | "ranged"
+  | "exploder"
+  | "summoner";
+
+// 敵種別の出現比率の並び順（ENEMY_RATIO の各配列もこの順）。
+const TYPE_ORDER: EnemyType[] = [
+  "standard",
+  "fast",
+  "tank",
+  "ranged",
+  "exploder",
+  "summoner",
+];
+
+// 敵1種の設定。
+// speed は「標準速度 × 倍率」を事前計算した絶対値（m/s）。
+// プロンプトは速度を「通常×倍率」と括弧内の絶対m/sの両方で記しているが、
+// 両者は内部で矛盾するため、一次仕様である倍率を STANDARD_SPEED に掛けて採用する。
+interface EnemyConfig {
+  scale: number;
+  bodyColor: number;
+  accentColor: number;
+  hp: number;
+  speed: number;
+  touch: number; // 接触ダメージ
+  attackInterval: number; // 接触ダメージの最小間隔（秒）
+  score: number; // 撃破スコア
+}
+
+const STANDARD_SPEED = 3.0; // 標準タイプの基準速度（m/s）
+
+const ENEMY_CONFIG: Record<EnemyType, EnemyConfig> = {
+  // 標準：バランス型（オレンジ）
+  standard: {
+    scale: 1.0,
+    bodyColor: 0x23262e,
+    accentColor: 0xff6a00,
+    hp: 100,
+    speed: STANDARD_SPEED * 1.0,
+    touch: 10,
+    attackInterval: 1.0,
+    score: 100,
+  },
+  // 高速：細く速く脆い（明るい赤）
+  fast: {
+    scale: 0.7,
+    bodyColor: 0x3a1515,
+    accentColor: 0xff2020,
+    hp: 30,
+    speed: STANDARD_SPEED * 2.2,
+    touch: 8,
+    attackInterval: 0.6,
+    score: 80,
+  },
+  // タンク：大きく遅く硬い（灰青）
+  tank: {
+    scale: 1.4,
+    bodyColor: 0x2a3038,
+    accentColor: 0x6688aa,
+    hp: 400,
+    speed: STANDARD_SPEED * 0.5,
+    touch: 25,
+    attackInterval: 2.0,
+    score: 250,
+  },
+  // 遠距離：中距離から撃つ（青紫）。射撃はタスク4で実装。
+  ranged: {
+    scale: 1.0,
+    bodyColor: 0x2a1d3a,
+    accentColor: 0x6644aa,
+    hp: 60,
+    speed: STANDARD_SPEED * 0.6,
+    touch: 5,
+    attackInterval: 1.5,
+    score: 120,
+  },
+  // 爆発：接触ダメージなし、死亡時に爆発（オレンジ）。爆発はタスク4で実装。
+  exploder: {
+    scale: 0.85,
+    bodyColor: 0x2e2012,
+    accentColor: 0xff6600,
+    hp: 80,
+    speed: STANDARD_SPEED * 0.9,
+    touch: 0,
+    attackInterval: 1.0,
+    score: 100,
+  },
+  // 召喚：遅く硬めで雑魚を呼ぶ（紫）。召喚はタスク4で実装。
+  summoner: {
+    scale: 1.2,
+    bodyColor: 0x2a1230,
+    accentColor: 0xcc44cc,
+    hp: 120,
+    speed: STANDARD_SPEED * 0.4,
+    touch: 8,
+    attackInterval: 1.0,
+    score: 300,
+  },
+};
+
+// 層に応じた敵種別の出現比率テーブル（[standard, fast, tank, ranged, exploder, summoner]）。
+const ENEMY_RATIO: Record<number, number[]> = {
+  1: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+  5: [0.6, 0.2, 0.1, 0.1, 0.0, 0.0],
+  10: [0.4, 0.2, 0.1, 0.1, 0.1, 0.1],
+  20: [0.2, 0.2, 0.2, 0.2, 0.1, 0.1],
+  50: [0.1, 0.2, 0.2, 0.2, 0.2, 0.1],
+  80: [0.1, 0.2, 0.1, 0.2, 0.2, 0.2],
+};
+const RATIO_KEYS = [1, 5, 10, 20, 50, 80];
 
 // ボスの種類。
 export type BossType = "crusher" | "phantom" | "warlord" | "hivemind" | "siege";
@@ -25,27 +150,37 @@ type BossKind = BossType | "rush";
 interface BossSlot {
   kind: BossKind;
   hpMul: number;
-  // 画面表示用の名前。
   label: string;
 }
 
 // フロアの進行フェーズ。
 type Phase =
-  | "countdown" // フロア開始前のカウントダウン
-  | "wave" // 通常Wave（敵を全滅させる）
-  | "boss" // ボス戦
-  | "rest" // フロアクリア後の休憩
-  | "result" // 失敗などで終了表示中
-  | "cleared" // 100層クリア
-  | "dead"; // プレイヤー死亡
+  | "countdown"
+  | "wave"
+  | "boss"
+  | "rest"
+  | "result"
+  | "cleared"
+  | "dead";
+
+// 生成後の敵1体ぶんのデータ。
+interface TowerEnemy {
+  unit: EnemyUnit;
+  type: EnemyType;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  touch: number;
+  attackInterval: number;
+  attackCd: number; // 次に接触ダメージを与えられるまでの残り秒数
+}
 
 const MAX_FLOOR = 100;
-const REST_SECONDS = 5; // フロアクリア後の休憩秒数
+const REST_SECONDS = 5;
 const COUNTDOWN_SECONDS = 3;
+const ARENA_BOUND = 28; // 敵を収めるおおまかな範囲（±）
 
 // 10層ごとのボス配置表（section 1 のフロア構成に準拠）。
-//   10:CRUSHER / 20:PHANTOM / 30:WARLORD / 40:PHANTOM強化 / 50:WARLORD強化 /
-//   60:HIVE MIND / 70:HIVE MIND強化 / 80:SIEGE(プレ最終) / 90:ボスラッシュ / 100:SIEGE最終
 const BOSS_SCHEDULE: Record<number, BossSlot> = {
   10: { kind: "crusher", hpMul: 1.0, label: "CRUSHER" },
   20: { kind: "phantom", hpMul: 1.0, label: "PHANTOM" },
@@ -59,7 +194,7 @@ const BOSS_SCHEDULE: Record<number, BossSlot> = {
   100: { kind: "siege", hpMul: 1.5, label: "SIEGE ENGINE 最終形態" },
 };
 
-export class TowerMode implements GameMode {
+export class TowerMode implements GameMode, MeleeTargetProvider {
   id = "tower";
   label = "TOWER（100層）";
   description =
@@ -75,11 +210,12 @@ export class TowerMode implements GameMode {
   private totalScore = 0;
   private elapsedMs = 0;
 
-  // 現フロアで残っている敵数（骨組みでは仮タイマーで消化する）。
-  private waveRemaining = 0;
-  // 骨組み専用：敵未実装のあいだ、Waveを擬似的に消化するための待機タイマー。
-  // タスク3で実敵スポーンに置き換える。
-  private placeholderWaveTimer = 0;
+  private enemies: TowerEnemy[] = [];
+  private eye = new THREE.Vector3();
+
+  // ボスフロアの暫定プレースホルダ（タスク5で実ボスに置換）。
+  private bossPlaceholderTimer = 0;
+  private bossPlaceholderActive = false;
 
   enter(ctx: GameContext, _now: number): void {
     this.ctx = ctx;
@@ -89,16 +225,18 @@ export class TowerMode implements GameMode {
     this.restCountdown = 0;
     this.totalScore = 0;
     this.elapsedMs = 0;
-    this.waveRemaining = 0;
-    this.placeholderWaveTimer = 0;
+    this.enemies = [];
+    this.bossPlaceholderTimer = 0;
+    this.bossPlaceholderActive = false;
 
+    ctx.meleeProvider = this;
     ctx.health.reset(100);
     ctx.health.show();
+    ctx.ui.showHud(false);
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(true);
       ctx.grenadeSystem.reset();
     }
-    // 射撃命中フック。タスク3以降で敵への当たりをここで処理する。
     ctx.weapons.enemyHitHook = (obj, dmg) => this.onHit(obj, dmg);
 
     this.hud = new ModeHUD();
@@ -111,7 +249,6 @@ export class TowerMode implements GameMode {
       return;
     }
 
-    // 死亡判定は常に最優先で見る。
     if (ctx.health.isDead()) {
       this.die(ctx);
       return;
@@ -133,8 +270,9 @@ export class TowerMode implements GameMode {
 
     if (this.phase === "wave" || this.phase === "boss") {
       this.updateCombat(ctx, dt);
-      if (this.waveRemaining <= 0) {
+      if (this.remaining() <= 0) {
         this.onFloorCleared();
+        return;
       }
       this.updateHud();
       return;
@@ -156,7 +294,12 @@ export class TowerMode implements GameMode {
     }
   }
 
-  // フロア開始。ボスフロアならボス戦、通常フロアならWaveを始める。
+  // 現フロアの残り討伐対象数（敵＋暫定ボス）。
+  private remaining(): number {
+    return this.enemies.length + (this.bossPlaceholderActive ? 1 : 0);
+  }
+
+  // フロア開始。
   private beginFloor(floor: number): void {
     const boss = BOSS_SCHEDULE[floor];
     if (boss) {
@@ -176,41 +319,190 @@ export class TowerMode implements GameMode {
     return 4 + floor * 2;
   }
 
-  // 通常Waveのスポーン。
-  // 【骨組み】実際の敵生成はタスク3で実装する。ここでは敵数だけ確定させ、
-  // placeholderWaveTimer による擬似消化で進行を流す。
+  // 層に応じた敵種別の出現比率（RATIO_KEYS の間は線形補間）。
+  private ratioFor(floor: number): number[] {
+    const f = Math.max(RATIO_KEYS[0], Math.min(RATIO_KEYS[RATIO_KEYS.length - 1], floor));
+    // 上下のキーを探す。
+    let lo = RATIO_KEYS[0];
+    let hi = RATIO_KEYS[RATIO_KEYS.length - 1];
+    for (let i = 0; i < RATIO_KEYS.length - 1; i++) {
+      if (f >= RATIO_KEYS[i] && f <= RATIO_KEYS[i + 1]) {
+        lo = RATIO_KEYS[i];
+        hi = RATIO_KEYS[i + 1];
+        break;
+      }
+    }
+    const a = ENEMY_RATIO[lo];
+    const b = ENEMY_RATIO[hi];
+    const t = hi === lo ? 0 : (f - lo) / (hi - lo);
+    const out: number[] = [];
+    for (let i = 0; i < TYPE_ORDER.length; i++) {
+      out.push(a[i] + (b[i] - a[i]) * t);
+    }
+    return out;
+  }
+
+  // 比率に従って敵種を1つ抽選する。
+  private pickType(floor: number): EnemyType {
+    const ratio = this.ratioFor(floor);
+    let sum = 0;
+    for (const v of ratio) sum += v;
+    let r = Math.random() * (sum > 0 ? sum : 1);
+    for (let i = 0; i < TYPE_ORDER.length; i++) {
+      r -= ratio[i];
+      if (r <= 0) return TYPE_ORDER[i];
+    }
+    return "standard";
+  }
+
+  // 通常Waveのスポーン。比率に従って waveEnemyCount 体を生成する。
   private spawnWave(floor: number): void {
-    this.waveRemaining = this.waveEnemyCount(floor);
-    this.placeholderWaveTimer = 0.6; // 骨組み：0.6秒後にクリア扱い
+    const count = this.waveEnemyCount(floor);
+    for (let i = 0; i < count; i++) {
+      this.spawnEnemy(this.pickType(floor), floor);
+    }
+  }
+
+  // 敵を1体生成してフィールドへ出す。
+  // hpScaleFloor: HPを層に応じて少しずつ底上げする（後半フロアの歯ごたえ確保）。
+  private spawnEnemy(type: EnemyType, floor: number): TowerEnemy | null {
+    if (!this.ctx) return null;
+    const cfg = ENEMY_CONFIG[type];
+
+    this.ctx.player.getEyePosition(this.eye);
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 18 + Math.random() * 4;
+    const x = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, this.eye.x + Math.cos(angle) * dist));
+    const z = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, this.eye.z + Math.sin(angle) * dist));
+
+    const unit = new EnemyUnit({
+      scale: cfg.scale,
+      bodyColor: cfg.bodyColor,
+      accentColor: cfg.accentColor,
+    });
+    unit.setGround(x, z);
+    this.ctx.scene.add(unit.group);
+    this.ctx.weapons.enemyTargets.push(unit.hitbox);
+    this.ctx.weapons.enemyTargets.push(unit.headHitbox);
+
+    // 層が上がるごとにHPを緩やかに底上げ（10層ごとに +10%）。
+    const hpScale = 1 + Math.floor(floor / 10) * 0.1;
+    const maxHp = Math.round(cfg.hp * hpScale);
+
+    const e: TowerEnemy = {
+      unit,
+      type,
+      hp: maxHp,
+      maxHp,
+      speed: cfg.speed,
+      touch: cfg.touch,
+      attackInterval: cfg.attackInterval,
+      attackCd: 0,
+    };
+    this.enemies.push(e);
+    return e;
   }
 
   // ボスのスポーン。
-  // 【骨組み】実際のボス生成・行動はタスク5で実装する。ここでは1体ぶんの
-  // 残数を立て、placeholderWaveTimer で擬似的に消化する。
-  private spawnBoss(_floor: number, _slot: BossSlot): void {
-    this.waveRemaining = 1;
-    this.placeholderWaveTimer = 1.0; // 骨組み：1秒後にクリア扱い
+  // 【暫定】実ボスの状態機械はタスク5で実装する。ここでは短い待機で消化する
+  // プレースホルダとし、フロアが完了できる状態だけを担保する。
+  private spawnBoss(_floor: number, slot: BossSlot): void {
+    this.bossPlaceholderActive = true;
+    this.bossPlaceholderTimer = slot.kind === "rush" ? 1.5 : 1.0;
   }
 
   // 戦闘フェーズの毎フレーム処理。
-  // 【骨組み】敵が未実装のため、擬似タイマーで waveRemaining を消化する。
-  // タスク3〜5で、実敵・実ボスの更新と全滅判定に置き換える。
-  private updateCombat(_ctx: GameContext, dt: number): void {
-    if (this.placeholderWaveTimer > 0) {
-      this.placeholderWaveTimer -= dt;
-      if (this.placeholderWaveTimer <= 0) {
-        this.waveRemaining = 0;
+  private updateCombat(ctx: GameContext, dt: number): void {
+    ctx.player.getEyePosition(this.eye);
+    let contactDamage = 0;
+    let playerDamaged = false;
+
+    // 敵の更新（撤去が起きても安全なよう後ろから回す）。
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      const dx = this.eye.x - e.unit.group.position.x;
+      const dz = this.eye.z - e.unit.group.position.z;
+      const d = Math.hypot(dx, dz);
+      e.unit.faceTo(dx, dz);
+
+      if (e.attackCd > 0) e.attackCd -= dt;
+
+      // よろけ中はAIを止めて吹き飛ばす。
+      if (e.unit.staggerTimer > 0) {
+        e.unit.updateKnockback(dt, ctx.stage.colliders, ARENA_BOUND);
+        e.unit.update(dt, "idle");
+        continue;
       }
+
+      // 【タスク3】全種とも基本接近。固有行動はタスク4で分岐実装する。
+      if (d > 0.9) {
+        e.unit.moveToward(this.eye.x, this.eye.z, e.speed, dt, ctx.stage.colliders);
+      }
+      e.unit.update(dt, d < 1.5 ? "attack" : "walk");
+
+      // 接触ダメージ（touch=0 の爆発タイプは接触では無害）。
+      if (d < 1.3 && e.touch > 0 && e.attackCd <= 0) {
+        contactDamage += e.touch;
+        e.attackCd = e.attackInterval;
+      }
+    }
+
+    // 敵同士の重なりとプレイヤーのすり抜けを解消する。
+    resolveBodyCollisions(
+      this.enemies.map((x) => x.unit),
+      ctx.player
+    );
+
+    if (contactDamage > 0) {
+      ctx.health.damage(contactDamage);
+      playerDamaged = true;
+    }
+
+    // 暫定ボスの消化。
+    if (this.bossPlaceholderActive && this.bossPlaceholderTimer > 0) {
+      this.bossPlaceholderTimer -= dt;
+      if (this.bossPlaceholderTimer <= 0) {
+        this.bossPlaceholderActive = false;
+      }
+    }
+
+    if (playerDamaged && ctx.health.isDead()) {
+      this.die(ctx);
     }
   }
 
   // 射撃が敵に当たったときのフック。
-  // 【骨組み】敵が未実装のため現状は何もしない。タスク3でHP減算・撃破処理を追加。
-  private onHit(_obj: object, _dmg: number): void {
-    // 敵実装後にここで命中処理を行う。
+  private onHit(obj: object, dmg: number): void {
+    const e = this.enemies.find(
+      (x) => x.unit.hitbox === obj || x.unit.headHitbox === obj
+    );
+    if (!e) return;
+    e.hp -= dmg;
+    if (e.hp <= 0) this.removeEnemy(e, true);
   }
 
-  // フロアクリア時の処理。スコア加算→休憩 or 100層ならクリア。
+  // 敵を1体取り除く。killed=true ならスコアを加算する。
+  private removeEnemy(e: TowerEnemy, killed: boolean): void {
+    if (!this.ctx) return;
+    this.ctx.scene.remove(e.unit.group);
+    e.unit.dispose();
+    const ti = this.ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
+    if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+    const hi = this.ctx.weapons.enemyTargets.indexOf(e.unit.headHitbox);
+    if (hi >= 0) this.ctx.weapons.enemyTargets.splice(hi, 1);
+    const ei = this.enemies.indexOf(e);
+    if (ei >= 0) this.enemies.splice(ei, 1);
+    if (killed) {
+      this.totalScore += ENEMY_CONFIG[e.type].score;
+    }
+  }
+
+  // 近接システムへ現在の敵を共通対象として公開する。
+  getMeleeTargets(): MeleeTarget[] {
+    return makeMeleeTargets(this.enemies, (e) => this.removeEnemy(e, true));
+  }
+
+  // フロアクリア時の処理。
   private onFloorCleared(): void {
     const bonus = this.floorClearBonus(this.currentFloor);
     this.totalScore += bonus;
@@ -223,17 +515,17 @@ export class TowerMode implements GameMode {
     this.phase = "rest";
     this.restCountdown = REST_SECONDS;
     this.hud?.setCenter(`FLOOR ${this.currentFloor} CLEARED  +${bonus}pt`, "#ffd23a");
+    this.updateHud();
   }
 
-  // フロアクリアのスコア（ボスフロアは厚め）。
   private floorClearBonus(floor: number): number {
     return BOSS_SCHEDULE[floor] ? 2000 : 200 + floor * 30;
   }
 
-  // 100層クリア。
-  // 【骨組み】専用のフェード演出はタスク6で実装。ここでは結果表示で締める。
+  // 100層クリア。専用演出はタスク6で実装。
   private clearTower(): void {
     this.phase = "cleared";
+    this.clearEnemies();
     const sec = Math.round(this.elapsedMs / 1000);
     this.ctx?.finish(
       [
@@ -245,9 +537,11 @@ export class TowerMode implements GameMode {
     );
   }
 
-  // プレイヤー死亡。到達層と総スコアを表示。
+  // プレイヤー死亡。
   private die(ctx: GameContext): void {
+    if (this.phase === "dead") return;
     this.phase = "dead";
+    this.clearEnemies();
     ctx.finish(
       [
         "TOWER 失敗",
@@ -258,23 +552,41 @@ export class TowerMode implements GameMode {
     );
   }
 
+  // フィールド上の敵を一括撤去する。
+  private clearEnemies(): void {
+    if (!this.ctx) return;
+    for (const e of this.enemies) {
+      this.ctx.scene.remove(e.unit.group);
+      e.unit.dispose();
+      const ti = this.ctx.weapons.enemyTargets.indexOf(e.unit.hitbox);
+      if (ti >= 0) this.ctx.weapons.enemyTargets.splice(ti, 1);
+      const hi = this.ctx.weapons.enemyTargets.indexOf(e.unit.headHitbox);
+      if (hi >= 0) this.ctx.weapons.enemyTargets.splice(hi, 1);
+    }
+    this.enemies = [];
+    this.bossPlaceholderActive = false;
+  }
+
   private updateHud(): void {
     if (!this.hud) return;
     this.hud.setTimer(fmtTime(Math.round(this.elapsedMs / 1000)));
     this.hud.setInfo([
       `Floor ${this.currentFloor} / ${MAX_FLOOR}`,
-      `残り敵 ${Math.max(0, this.waveRemaining)}`,
+      `残り敵 ${this.remaining()}`,
       `スコア ${this.totalScore}`,
     ]);
   }
 
   exit(ctx: GameContext): void {
+    ctx.meleeProvider = null;
+    this.clearEnemies();
     ctx.weapons.enemyHitHook = null;
     if (ctx.grenadeSystem) {
       ctx.grenadeSystem.setEnabled(false);
       ctx.grenadeSystem.clear();
     }
     ctx.health.hide();
+    ctx.ui.showHud(false);
     this.hud?.dispose();
     this.hud = null;
     this.ctx = null;

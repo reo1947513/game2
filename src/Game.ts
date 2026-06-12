@@ -211,6 +211,8 @@ export class Game {
     }));
     // 旧モード選択UIは隠し、ホーム画面に切り替える（リザルト表示には ModeUI を引き続き使用）
     this.ui.hideAll();
+    // ホーム画面ではタッチ操作UIを隠す（プレイ中だけ表示する）
+    if (TouchControls.isTouchDevice()) this.touch.setPlayVisible(false);
     this.home.show({
       modes,
       onPlay: (id: string) => this.beginMode(id),
@@ -249,9 +251,9 @@ export class Game {
     this.screen = "playing";
     this.suppressUnlockMenu = false;
     // 端末に応じて操作方式を有効化（タッチ or マウス固定）。
-    // タッチ端末では start() で既に enable 済みのため、ここではマウス側のみ要求する。
+    // タッチ端末ではプレイ中だけタッチUIを表示する。
     if (TouchControls.isTouchDevice()) {
-      this.touch.enable();
+      this.touch.setPlayVisible(true);
     } else {
       this.input.requestLock();
     }
@@ -352,7 +354,7 @@ export class Game {
     this.ui.hideAll();
     this.screen = "playing";
     this.suppressUnlockMenu = false;
-    if (TouchControls.isTouchDevice()) this.touch.enable();
+    if (TouchControls.isTouchDevice()) this.touch.setPlayVisible(true);
     else this.input.requestLock();
 
     this.melee.cancel();

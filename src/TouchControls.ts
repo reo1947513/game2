@@ -389,6 +389,18 @@ export class TouchControls {
     this.setMode("play");
   }
 
+  // メニュー／ホーム画面ではタッチUIを隠し、プレイ中だけ表示する。
+  // enable() は一度だけ有効化する（冪等）。表示の切り替えはこちらで行う。
+  setPlayVisible(visible: boolean): void {
+    if (visible) {
+      this.enable();
+      this.root.style.display = "block";
+      this.setMode("play");
+    } else {
+      this.root.style.display = "none";
+    }
+  }
+
   // 各要素の実サイズ(px)＝全体サイズ×個別倍率
   private realSize(key: string): number {
     const scale = this.layout.scales[key] ?? 1;

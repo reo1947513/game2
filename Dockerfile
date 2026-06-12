@@ -20,7 +20,7 @@ RUN if [ ! -f src/shared/protocol.ts ]; then \
       apk add --no-cache git && \
       rm -rf src/shared && \
       git clone https://github.com/reo1947513/game2-shared.git src/shared && \
-      git -C src/shared checkout a60d35f5f9f35adf1dcb2520592ab63d420681dc; \
+      git -C src/shared checkout 96b69dd051b4dafc770fee4029f4ff6f1aa24fa2; \
     fi
 
 # WebSocketサーバーのURL。Railway が build-arg を渡せば上書きされるが、渡されない場合に

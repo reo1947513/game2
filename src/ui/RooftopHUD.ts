@@ -10,6 +10,7 @@ export class RooftopHUD {
   private result: HTMLElement;
   private resultInner: HTMLElement;
   private feed: HTMLElement;
+  private prompt: HTMLElement;
 
   constructor() {
     this.root = document.createElement("div");
@@ -38,9 +39,24 @@ export class RooftopHUD {
     this.feed.style.cssText =
       "position:fixed;top:64px;right:14px;z-index:40;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:none;font-family:'Segoe UI',system-ui,sans-serif;";
 
+    // ジップライン乗り込みプロンプト（画面下中央）。
+    this.prompt = document.createElement("div");
+    this.prompt.style.cssText =
+      "position:fixed;left:0;right:0;bottom:22%;z-index:45;display:none;justify-content:center;pointer-events:none;font-family:'Segoe UI',system-ui,sans-serif;";
+    this.prompt.innerHTML =
+      '<div style="padding:8px 18px;border-radius:10px;background:rgba(10,18,30,0.8);border:1px solid #ffcc00;color:#fff;font-size:15px;text-shadow:0 1px 2px #000;">' +
+      '<span style="display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border-radius:5px;background:#ffcc00;color:#1a1200;font-weight:800;margin-right:8px;">E</span>' +
+      "ジップライン</div>";
+
     document.body.appendChild(this.root);
     document.body.appendChild(this.result);
     document.body.appendChild(this.feed);
+    document.body.appendChild(this.prompt);
+  }
+
+  // ジップライン乗り込みプロンプトの表示/非表示。
+  setZiplinePrompt(show: boolean): void {
+    this.prompt.style.display = show ? "flex" : "none";
   }
 
   // キルフィードに1行追加する（数秒で自動的に消える）。
@@ -77,6 +93,7 @@ export class RooftopHUD {
     this.result.style.display = "none";
     this.board.innerHTML = "";
     this.feed.innerHTML = "";
+    this.prompt.style.display = "none";
   }
 
   // 上部スコアボードを更新する。

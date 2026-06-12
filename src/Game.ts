@@ -15,7 +15,7 @@ import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
 import { HomeScreen } from "./ui/HomeScreen";
-import { PlayerState, WorldState, GameEvent, Team, ServerEnemyState } from "./online/netTypes";
+import { PlayerState, WorldState, GameEvent, Team, ServerEnemyState, ZiplineState } from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
 import { RemoteEnemy } from "./online/RemoteEnemy";
@@ -82,6 +82,9 @@ export class Game {
   private coopResultShown = false; // コープのリザルトを表示済みか
   private rooftopHud = new RooftopHUD(); // ROOFTOP DUEL 用HUD
   private rooftopResultShown = false; // ルーフトップのリザルトを表示済みか
+  private rooftopZiplines: ZiplineState[] = []; // 直近のジップライン状態（乗降判定用）
+  private ziplineRide: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number } | null = null;
+  private ePrev = false; // Eキーのエッジ検出用（ジップライン乗降）
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -420,6 +423,7 @@ export class Game {
     this.teamHud.hide();
     this.coopHud.hide();
     this.rooftopHud.hide();
+    this.ziplineRide = null;
     this.melee.onSwingHit = null;
     this.player.setSpeedCap(null);
     if (mode === "tdm") {
@@ -445,6 +449,64 @@ export class Game {
   }
 
   // 自分の状態送信＋オンライン用グレネード入力＋ゴースト補間（毎フレーム）。
+  // ROOFTOP DUEL：ジップラインの乗降。滑走中は true を返して通常移動をスキップさせる。
+  // サーバーへ承認要求（useZipline）を送りつつ、クライアントがワイヤ上を滑走する。
+  // 起点付近で[E]→滑走開始、滑走中に[E]→途中離脱（落下）、終点到達で自動降車。
+  private updateZiplineRide(dt: number, input: InputState): boolean {
+    if (this.onlineMode !== "rooftop") return false;
+    const ePress = input.interactHeld && !this.ePrev;
+    this.ePrev = input.interactHeld;
+
+    if (this.ziplineRide) {
+      const r = this.ziplineRide;
+      if (ePress) {
+        // 途中離脱 → 通常物理へ戻して落下させる
+        this.ziplineRide = null;
+        this.rooftopHud.setZiplinePrompt(false);
+        return false;
+      }
+      r.t += dt;
+      const k = Math.min(1, r.t / r.dur);
+      this.player.position.set(
+        r.from.x + (r.to.x - r.from.x) * k,
+        r.from.y + (r.to.y - r.from.y) * k - 1.6,
+        r.from.z + (r.to.z - r.from.z) * k
+      );
+      this.player.velocity.set(0, 0, 0);
+      if (k >= 1) {
+        this.ziplineRide = null;
+        this.rooftopHud.setZiplinePrompt(false);
+      }
+      return true;
+    }
+
+    // 起点アンカー付近の空きジップラインを探す
+    let near: ZiplineState | null = null;
+    for (const z of this.rooftopZiplines) {
+      if (z.inUse && z.inUse !== this.network.playerId) continue;
+      if (z.cooldown > 0) continue;
+      const dx = this.player.position.x - z.from.x;
+      const dz = this.player.position.z - z.from.z;
+      if (Math.hypot(dx, dz) <= 2.5 && Math.abs(this.player.position.y - (z.from.y - 1.1)) <= 2.5) {
+        near = z;
+        break;
+      }
+    }
+    this.rooftopHud.setZiplinePrompt(!!near);
+    if (near && ePress) {
+      this.network.useZipline(near.id);
+      this.ziplineRide = {
+        from: new THREE.Vector3(near.from.x, near.from.y, near.from.z),
+        to: new THREE.Vector3(near.to.x, near.to.y, near.to.z),
+        t: 0,
+        dur: Math.max(0.5, near.length / near.speed),
+      };
+      this.rooftopHud.setZiplinePrompt(false);
+      return true;
+    }
+    return false;
+  }
+
   private updateOnline(inputState: InputState, dt: number): void {
     const p = this.player;
     this.onlineSeq = this.predictor.nextSeq();
@@ -558,6 +620,7 @@ export class Game {
     }
 
     if (this.onlineMode === "rooftop" && world.rooftop) {
+      this.rooftopZiplines = world.rooftop.ziplines;
       this.rooftopHud.update(world.rooftop, this.network.playerId, (id) => this.playerName(id));
       if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
         this.rooftopResultShown = true;
@@ -684,6 +747,7 @@ export class Game {
     this.teamHud.hide();
     this.coopHud.hide();
     this.rooftopHud.hide();
+    this.ziplineRide = null;
     this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();
@@ -833,8 +897,10 @@ export class Game {
       this.melee.lungeVelZ()
     );
 
-    // プレイヤー更新
-    this.player.update(dt, inputState);
+    // プレイヤー更新（ROOFTOP DUEL：ジップライン滑走中は通常移動を止めワイヤ上を移動）
+    if (!this.updateZiplineRide(dt, inputState)) {
+      this.player.update(dt, inputState);
+    }
 
     // カメラ位置＝目線、向き＝マウスで作ったyaw/pitch（反動はInput側に加算済み）
     this.player.getEyePosition(this.eye);

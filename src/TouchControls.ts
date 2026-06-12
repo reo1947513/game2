@@ -65,6 +65,8 @@ const ACTIONS: ActionDef[] = [
   { key: "kick", label: "蹴り", type: "tap" },
   { key: "knife", label: "ナイフ", type: "tap" },
   { key: "grenade", label: "手榴弾", type: "hold" },
+  // 閃光弾（タップで投擲）。キーボードのCキーと同じ flashThrow 入力を呼ぶ。
+  { key: "flash", label: "閃光弾", type: "tap" },
 ];
 
 // サイズ編集の見出しに使う、要素ごとの表示名
@@ -80,6 +82,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   kick: "蹴り",
   knife: "ナイフ",
   grenade: "手榴弾",
+  flash: "閃光弾",
 };
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
@@ -98,6 +101,7 @@ const DEFAULT_LAYOUT: Layout = {
     kick: { x: 88, y: 36 },
     knife: { x: 60, y: 24 },
     grenade: { x: 73, y: 28 },
+    flash: { x: 64, y: 40 },
   },
   scales: {},
 };
@@ -591,6 +595,9 @@ export class TouchControls {
         break;
       case "knife":
         this.input.queueKnife();
+        break;
+      case "flash":
+        this.input.queueFlash();
         break;
     }
   }
@@ -1101,6 +1108,22 @@ export class TouchControls {
         background: currentColor;
         -webkit-mask: url(/icon_grenade.png) center / contain no-repeat;
         mask: url(/icon_grenade.png) center / contain no-repeat;
+      }
+      /* 閃光弾ボタンはスタングレネードのシルエットを表示する。文字「閃光弾」は隠す。 */
+      #touch-root .tc-btn[data-action="flash"] {
+        font-size: 0;
+      }
+      #touch-root .tc-btn[data-action="flash"]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 78%;
+        height: 78%;
+        transform: translate(-50%, -50%);
+        background: currentColor;
+        -webkit-mask: url(/icon_flash.png) center / contain no-repeat;
+        mask: url(/icon_flash.png) center / contain no-repeat;
       }
       #touch-root .tc-controls.editing .tc-btn,
       #touch-root .tc-controls.editing .tc-joy {

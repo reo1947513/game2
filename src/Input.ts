@@ -182,6 +182,10 @@ export class Input {
   queueKnife(): void {
     this.knifeQueued = true;
   }
+  // モバイルの閃光弾ボタン。キーボードのCキーと同じく flashQueued を立てる。
+  queueFlash(): void {
+    this.flashQueued = true;
+  }
   // モバイルのグレネードボタン。長押しで軌道プレビュー、離した瞬間にフラグ投擲。
   setGrenadeHeld(held: boolean): void {
     if (this.fragHeldDown && !held) this.fragReleasedQueued = true;

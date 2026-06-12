@@ -21,6 +21,7 @@ import { RemoteProjectile } from "./online/RemoteProjectile";
 import { RemoteEnemy } from "./online/RemoteEnemy";
 import { TeamHUD } from "./ui/TeamHUD";
 import { CoopHUD } from "./ui/CoopHUD";
+import { RooftopHUD } from "./ui/RooftopHUD";
 import { InputState, WeaponKind } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
@@ -79,6 +80,8 @@ export class Game {
   private coopHud = new CoopHUD(); // コープ用HUD
   private remoteEnemies = new Map<string, RemoteEnemy>(); // サーバー権威の敵ゴースト
   private coopResultShown = false; // コープのリザルトを表示済みか
+  private rooftopHud = new RooftopHUD(); // ROOFTOP DUEL 用HUD
+  private rooftopResultShown = false; // ルーフトップのリザルトを表示済みか
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -416,6 +419,7 @@ export class Game {
     // モード別HUD・近接通知・速度制限の初期化
     this.teamHud.hide();
     this.coopHud.hide();
+    this.rooftopHud.hide();
     this.melee.onSwingHit = null;
     this.player.setSpeedCap(null);
     if (mode === "tdm") {
@@ -426,6 +430,11 @@ export class Game {
       this.coopResultShown = false;
       this.coopHud.show();
       // コープでも近接は敵に当たる
+      this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
+    } else if (mode === "rooftop") {
+      this.rooftopResultShown = false;
+      this.rooftopHud.show();
+      // ルーフトップでも近接（ナイフ／キック）は有効
       this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
     }
     // タッチ端末では蘇生ボタンをコープ時のみ表示する
@@ -547,6 +556,21 @@ export class Game {
         this.coopHud.showResult(world.coop, () => this.showMenu());
       }
     }
+
+    if (this.onlineMode === "rooftop" && world.rooftop) {
+      this.rooftopHud.update(world.rooftop, this.network.playerId, (id) => this.playerName(id));
+      if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
+        this.rooftopResultShown = true;
+        this.suppressUnlockMenu = true;
+        if (document.exitPointerLock) document.exitPointerLock();
+        this.rooftopHud.showResult(
+          world.rooftop,
+          this.network.playerId,
+          (id) => this.playerName(id),
+          () => this.showMenu()
+        );
+      }
+    }
   }
 
   // サーバー権威の敵ゴーストを生成・更新・破棄する。
@@ -650,6 +674,7 @@ export class Game {
     this.melee.onSwingHit = null;
     this.teamHud.hide();
     this.coopHud.hide();
+    this.rooftopHud.hide();
     this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();

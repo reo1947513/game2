@@ -12,6 +12,7 @@ export class CoopHUD {
   private reviveFill: HTMLElement;
   private result: HTMLElement;
   private resultInner: HTMLElement;
+  private feed: HTMLElement;
   private onClose: (() => void) | null = null;
 
   constructor() {
@@ -46,11 +47,31 @@ export class CoopHUD {
     this.resultInner.className = "coop-result-inner";
     this.result.appendChild(this.resultInner);
 
+    this.feed = document.createElement("div");
+    this.feed.className = "coop-feed";
+
     this.root.appendChild(this.top);
     this.root.appendChild(this.list);
+    this.root.appendChild(this.feed);
     this.root.appendChild(this.revive);
     this.root.appendChild(this.result);
     document.body.appendChild(this.root);
+  }
+
+  // キルフィードに1行追加する（フォローキル・フラッシュアシストのボーナス表示）。
+  addFeed(text: string): void {
+    const row = document.createElement("div");
+    row.className = "coop-feed-row";
+    row.textContent = text;
+    this.feed.appendChild(row);
+    while (this.feed.childElementCount > 5) {
+      const first = this.feed.firstElementChild;
+      if (first) this.feed.removeChild(first);
+      else break;
+    }
+    window.setTimeout(() => {
+      if (row.parentElement === this.feed) this.feed.removeChild(row);
+    }, 4000);
   }
 
   show(): void {
@@ -63,6 +84,7 @@ export class CoopHUD {
     this.root.style.display = "none";
     this.result.style.display = "none";
     this.revive.style.display = "none";
+    this.feed.innerHTML = "";
   }
 
   // 毎フレーム更新。nameOf はプレイヤーIDから表示名を返す関数。
@@ -202,6 +224,8 @@ export class CoopHUD {
       #coop-hud .coop-result-sub { color: #fff; font-size: 22px; font-weight: 800; }
       #coop-hud .coop-result-btn { margin-top: 6px; padding: 12px 28px; font-size: 16px; font-weight: 800; color: #1a1a1a; background: #ffd27a; border: none; border-radius: 10px; cursor: pointer; }
       #coop-hud .coop-result-btn:hover { background: #ffdd97; }
+      #coop-hud .coop-feed { position: absolute; top: 64px; right: 18px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+      #coop-hud .coop-feed-row { background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 5px; font-size: 13px; font-weight: 800; color: #9ff0b0; text-shadow: 0 1px 2px rgba(0,0,0,0.85); letter-spacing: 0.03em; }
     `;
     document.head.appendChild(style);
   }

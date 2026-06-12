@@ -599,6 +599,11 @@ export class Game {
       this.grenades.explodeFragAt(Number(p.x), Number(p.y), Number(p.z));
     } else if (ev.type === "FLASHBANG_EXPLODE") {
       this.grenades.explodeFlashAt(Number(p.x), Number(p.y), Number(p.z));
+    } else if (ev.type === "COOP_BONUS") {
+      // コープの協力ボーナス（フォローキル＋300／フラッシュアシスト＋150）
+      const name = this.playerName(String(p.playerId));
+      const label = p.kind === "FOLLOW_KILL" ? "FOLLOW KILL" : "FLASH ASSIST";
+      this.coopHud.addFeed(`${name}  ${label} +${Number(p.points)}`);
     }
   }
 

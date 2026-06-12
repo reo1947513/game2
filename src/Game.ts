@@ -141,17 +141,17 @@ export class Game {
 
     // 入力（ポインタロックの対象はcanvas）
     this.input = new Input(this.renderer.domElement);
-    this.settings = new SettingsUI(this.input);
+    this.sound = new SoundSystem();
+    this.settings = new SettingsUI(this.input, this.sound);
 
     // ステージ・プレイヤー・武器・HUD
     this.stage = new Stage(this.scene);
     this.player = new PlayerController(this.stage.colliders);
     this.hud = new HUD();
-    this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud);
+    this.weapons = new WeaponSystem(this.camera, this.scene, this.input, this.stage, this.hud, this.sound);
     this.knifeVm = new KnifeViewmodel(this.camera);
     this.kickVm = new KickViewmodel(this.camera);
     this.slashTrail = new SlashTrail(this.scene);
-    this.sound = new SoundSystem();
     this.melee = new MeleeSystem(
       this.camera,
       this.player,

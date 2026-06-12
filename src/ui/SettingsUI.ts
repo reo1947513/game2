@@ -10,6 +10,7 @@ import {
   ADS_SENS_MAX,
   ADS_SENS_PRESETS,
 } from "../Input";
+import { SoundSystem } from "../SoundSystem";
 
 // 設定画面。マウス感度（5段階＋バー）、ADS感度（スコープ。5段階＋バー）、
 // PCのキー再割り当て、初期化を提供する。ホーム画面とPCポーズメニューから開く。
@@ -26,8 +27,11 @@ export class SettingsUI {
   private adsReadout!: HTMLElement;
   private sensPresetBtns: HTMLElement[] = [];
   private adsPresetBtns: HTMLElement[] = [];
+  private volSlider!: HTMLInputElement;
+  private volReadout!: HTMLElement;
+  private sfxToggle!: HTMLElement;
 
-  constructor(private input: Input) {
+  constructor(private input: Input, private sound: SoundSystem) {
     this.root = document.createElement("div");
     this.root.style.cssText =
       "position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(4,6,12,0.82);font-family:'Segoe UI',system-ui,sans-serif;";
@@ -76,6 +80,36 @@ export class SettingsUI {
       this.panel.appendChild(r.el);
     }
 
+    // ===== サウンド =====
+    this.panel.appendChild(this.sectionLabel("サウンド"));
+    {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:10px;";
+      this.sfxToggle = document.createElement("button");
+      this.sfxToggle.style.cssText =
+        "padding:6px 14px;border-radius:7px;border:1px solid #2f4d6e;background:#13233a;color:#cfe0f5;font-size:13px;cursor:pointer;white-space:nowrap;";
+      this.sfxToggle.onclick = () => {
+        this.sound.setEnabled(!this.sound.isEnabled());
+        this.refresh();
+      };
+      this.volSlider = document.createElement("input");
+      this.volSlider.type = "range";
+      this.volSlider.min = "0";
+      this.volSlider.max = "1";
+      this.volSlider.step = "0.02";
+      this.volSlider.style.cssText = "flex:1;accent-color:#6aa8ff;";
+      this.volSlider.addEventListener("input", () => {
+        this.sound.setVolume(parseFloat(this.volSlider.value));
+        this.refresh();
+      });
+      this.volReadout = document.createElement("div");
+      this.volReadout.style.cssText = "min-width:46px;text-align:right;font-size:12px;color:#9fc8ff;";
+      row.appendChild(this.sfxToggle);
+      row.appendChild(this.volSlider);
+      row.appendChild(this.volReadout);
+      this.panel.appendChild(row);
+    }
+
     // ===== キー割り当て =====
     this.panel.appendChild(this.sectionLabel("キー割り当て（クリックして変更）"));
     const list = document.createElement("div");
@@ -105,6 +139,8 @@ export class SettingsUI {
       this.input.resetBindings();
       this.input.setSensitivity(0.0022);
       this.input.setAdsSensitivity(0.0013);
+      this.sound.setEnabled(true);
+      this.sound.setVolume(0.7);
       this.refresh();
     };
     const close = document.createElement("button");
@@ -213,6 +249,14 @@ export class SettingsUI {
     this.adsSlider.value = String(av);
     this.adsReadout.textContent = av.toFixed(4);
     this.highlightPresets(this.adsPresetBtns, ADS_SENS_PRESETS, av);
+    // サウンド
+    const on = this.sound.isEnabled();
+    this.sfxToggle.textContent = on ? "効果音 ON" : "効果音 OFF";
+    this.sfxToggle.style.background = on ? "rgba(80,150,255,0.32)" : "#13233a";
+    this.sfxToggle.style.borderColor = on ? "#6aa8ff" : "#2f4d6e";
+    this.sfxToggle.style.color = on ? "#fff" : "#cfe0f5";
+    this.volSlider.value = String(this.sound.getVolume());
+    this.volReadout.textContent = Math.round(this.sound.getVolume() * 100) + "%";
   }
 
   // 現在値に最も近いプリセットを強調する。

@@ -5,6 +5,7 @@ import { Stage, Target } from "./Stage";
 import { Input } from "./Input";
 import { Scope } from "./Scope";
 import { Hitmarker } from "./Hitmarker";
+import { SoundSystem } from "./SoundSystem";
 
 // 1丁分の見た目と状態
 interface WeaponInstance {
@@ -78,7 +79,8 @@ export class WeaponSystem {
     scene: THREE.Scene,
     private input: Input,
     private stage: Stage,
-    private hud: HUD
+    private hud: HUD,
+    private sound: SoundSystem
   ) {
     // カメラをシーンに入れておかないと、カメラの子（武器モデル）が描画されません
     scene.add(this.camera);
@@ -469,6 +471,7 @@ export class WeaponSystem {
     ) {
       this.reloading = true;
       this.reloadEndTime = now + w.spec.reloadTime;
+      this.sound.reloadClick();
     }
     if (this.reloading && now >= this.reloadEndTime) {
       const need = w.spec.magSize - w.mag;
@@ -508,6 +511,9 @@ export class WeaponSystem {
 
     // オンライン：撃ったレイをサーバーの命中判定へ送る（拡散前の照準方向）。
     if (this.onShot) this.onShot(origin, baseDir, w.spec.damage);
+
+    // 発砲音
+    this.sound.gunshot();
 
     const moveFactor = Math.min(1, playerSpeed / this.SPEED_REF);
     const baseSpread = input.aiming ? w.spec.adsSpread : w.spec.hipSpread;
@@ -553,6 +559,7 @@ export class WeaponSystem {
     if (this.enemyTargets.indexOf(obj) >= 0) {
       const isHead = obj.userData && obj.userData.isHead === true;
       this.hud.flashHitmarker();
+      this.sound.hitmarker();
       if (isHead) this.hitmarker.headshot();
       const dmg = isHead ? w.spec.damage * 2 : w.spec.damage;
       if (this.enemyHitHook) this.enemyHitHook(obj, dmg);

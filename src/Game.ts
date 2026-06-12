@@ -13,6 +13,7 @@ import { Health } from "./Health";
 import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
+import { HomeScreen } from "./ui/HomeScreen";
 import { PlayerState, WorldState, GameEvent } from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
@@ -60,6 +61,7 @@ export class Game {
   // ===== オンライン対戦（フェーズ1：座標同期・ゴースト表示） =====
   private network = new NetworkManager();
   private lobby = new RoomLobbyUI();
+  private home = new HomeScreen();
   private remotePlayers = new Map<string, RemotePlayer>();
   private online = false; // オンラインセッション中か
   private onlineWired = false; // ネットワークイベントを結線済みか
@@ -195,41 +197,41 @@ export class Game {
     }
   }
 
-  // モード選択画面を表示する（プレイは一時停止）
+  // ホーム画面（SKYFRAMEロビー）を表示する（プレイは一時停止）
   private showMenu(): void {
     this.screen = "menu";
     this.paused = true;
     this.melee.cancel();
     if (this.online) this.leaveOnline();
     this.modeManager.stop(this.ctx);
-    const items = this.modeManager.list().map((m) => ({
+    const modes = this.modeManager.list().map((m) => ({
       id: m.id,
       label: m.label,
       description: m.description,
     }));
-    items.push({
-      id: "__online__",
-      label: "オンライン対戦",
-      description: "ルームコードで対戦（フェーズ1：座標同期）",
-    });
-    this.ui.showMenu(
-      items,
-      (id: string) =>
-        id === "__online__" ? this.openLobby() : this.beginMode(id),
-      STAGE_LIST,
-      this.selectedStageId,
-      (sid: string) => {
+    // 旧モード選択UIは隠し、ホーム画面に切り替える（リザルト表示には ModeUI を引き続き使用）
+    this.ui.hideAll();
+    this.home.show({
+      modes,
+      onPlay: (id: string) => this.beginMode(id),
+      onOnline: () => {
+        this.home.hide();
+        this.openLobby();
+      },
+      stages: STAGE_LIST.map((s) => ({ id: s.id, label: s.label })),
+      selectedStage: this.selectedStageId,
+      onStage: (sid: string) => {
         this.selectedStageId = sid as StageId;
       },
-      [
+      difficulties: [
         { id: "normal", label: "NORMAL" },
         { id: "hard", label: "HARD" },
       ],
-      this.selectedDifficulty,
-      (did: string) => {
+      selectedDifficulty: this.selectedDifficulty,
+      onDifficulty: (did: string) => {
         this.selectedDifficulty = did === "hard" ? "hard" : "normal";
-      }
-    );
+      },
+    });
   }
 
   // ステージを切り替える。コライダー配列の参照は維持されるが、射撃対象は集め直す。
@@ -243,6 +245,7 @@ export class Game {
   // 選んだモードで開始する
   private beginMode(id: string): void {
     this.ui.hideAll();
+    this.home.hide();
     this.screen = "playing";
     this.suppressUnlockMenu = false;
     // 端末に応じて操作方式を有効化（タッチ or マウス固定）。

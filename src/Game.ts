@@ -95,6 +95,8 @@ export class Game {
   private ePrev = false; // Eキーのエッジ検出用（ジップライン乗降）
   private rooftopRound = 0; // サバイバルの現在ラウンド（ラウンド切替時の再配置検知用）
   private spectatingTarget: string | null = null; // サバイバル脱落後に追従する生存者ID
+  private swayPhase = 0; // スナイパー息継ぎ揺れの位相
+  private holdBreathTime = 0; // 止息（Shift長押し）の経過秒
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -957,6 +959,22 @@ export class Game {
     this.player.getEyePosition(this.eye);
     this.camera.position.copy(this.eye);
     this.camera.rotation.set(this.input.getPitch(), this.input.getYaw(), 0, "YXZ");
+
+    // スナイパー息継ぎ：スコープADS中、照準をゆっくり楕円に揺らす（周期3秒、世界が揺れるので実弾もブレる）。
+    // 止息（Shift）を押している間2秒までは揺れが1/3に収束し、2秒を超えると息切れで元に戻る。
+    const scopeAds = this.weapons.getScopeAds();
+    if (scopeAds > 0.5) {
+      this.swayPhase += dt;
+      if (inputState.sprint) this.holdBreathTime += dt;
+      else this.holdBreathTime = 0;
+      const holding = inputState.sprint && this.holdBreathTime < 2.0;
+      const amp = 0.007 * scopeAds * (holding ? 1 / 3 : 1);
+      const w = (Math.PI * 2) / 3; // 周期3秒
+      this.camera.rotation.y += Math.sin(this.swayPhase * w) * amp;
+      this.camera.rotation.x += Math.cos(this.swayPhase * w) * amp * 0.6;
+    } else {
+      this.holdBreathTime = 0;
+    }
 
     // オンライン中：自分の状態を送信し、他プレイヤーのゴーストを補間更新する
     if (this.online) this.updateOnline(inputState, dt);

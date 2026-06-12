@@ -452,6 +452,12 @@ export class WeaponSystem {
     this.locked = false;
   }
 
+  // スコープ武器の覗き込み量（0..1）。非スコープ武器や腰だめなら0。
+  // 0.5超でスコープ表示中。息継ぎ揺れの強さに使う。
+  getScopeAds(): number {
+    return this.spec.scope ? this.adsProgress : 0;
+  }
+
   private handleReload(input: InputState, now: number): void {
     const w = this.weapons.get(this.current)!;
     // 手動リロード、または弾が0になったときの自動リロード

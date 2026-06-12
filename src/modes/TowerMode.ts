@@ -7,7 +7,8 @@ import {
 } from "../GameModes";
 import { EnemyUnit } from "../Enemy";
 import { MeleeTarget, MeleeTargetProvider } from "../combat/MeleeTarget";
-import { ModeHUD } from "../ui/ModeHUD";
+import { FloorHUD } from "../ui/FloorHUD";
+import { BossHUD } from "../ui/BossHUD";
 
 // ===== TOWER（100層フロア制）オフライン版 =====
 //
@@ -314,7 +315,8 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
     "1層ずつ敵Waveを全滅させて上を目指す。10層ごとにボス。100層クリアでTOWER CLEARED。";
 
   private ctx: GameContext | null = null;
-  private hud: ModeHUD | null = null;
+  private hud: FloorHUD | null = null;
+  private bossHud: BossHUD | null = null;
 
   private phase: Phase = "countdown";
   private countdown = COUNTDOWN_SECONDS;
@@ -355,7 +357,8 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
     }
     ctx.weapons.enemyHitHook = (obj, dmg) => this.onHit(obj, dmg);
 
-    this.hud = new ModeHUD();
+    this.hud = new FloorHUD();
+    this.bossHud = new BossHUD();
     this.hud.setCenter(String(COUNTDOWN_SECONDS), "#ffffff");
     this.updateHud();
   }
@@ -1136,8 +1139,9 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
       const idx = RUSH_ORDER.length - this.rushQueue.length; // 1..5
       this.spawnBoss(next, RUSH_HP_MUL, RUSH_SCALE_MUL, `RUSH ${idx}/5`, false);
     } else {
-      // 通常ボス撃破：場の随伴・召喚をすべて片付ける。
+      // 通常ボス撃破：場の随伴・召喚をすべて片付け、ボスHUDを隠す。
       this.clearMinions();
+      this.bossHud?.hide();
     }
   }
 
@@ -1250,17 +1254,26 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
   private clearTower(): void {
     this.phase = "cleared";
     this.clearField();
+    this.bossHud?.hide();
+    this.hud?.clearCenter();
+    // 画面を白くフェードさせてから結果を表示する（BGM停止APIは未露出のため省略）。
+    this.hud?.showClearFade();
     const sec = Math.round(this.elapsedMs / 1000);
-    this.ctx?.finish(
-      ["TOWER CLEARED", `クリアタイム ${fmtTime(sec)}`, `総スコア ${this.totalScore}`],
-      true
-    );
+    const ctx = this.ctx;
+    const score = this.totalScore;
+    window.setTimeout(() => {
+      ctx?.finish(
+        ["TOWER CLEARED", `クリアタイム ${fmtTime(sec)}`, `総スコア ${score}`],
+        true
+      );
+    }, 1300);
   }
 
   private die(ctx: GameContext): void {
     if (this.phase === "dead") return;
     this.phase = "dead";
     this.clearField();
+    this.bossHud?.hide();
     ctx.finish(
       [
         "TOWER 失敗",
@@ -1284,20 +1297,19 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
       this.boss = null;
     }
     this.rushQueue = [];
+    this.bossHud?.hide();
   }
 
   private updateHud(): void {
     if (!this.hud) return;
     this.hud.setTimer(fmtTime(Math.round(this.elapsedMs / 1000)));
-    const info = [
-      `Floor ${this.currentFloor} / ${MAX_FLOOR}`,
-      `残り敵 ${this.remaining()}`,
-      `スコア ${this.totalScore}`,
-    ];
+    this.hud.setHeader(this.currentFloor, MAX_FLOOR, this.remaining(), this.totalScore);
     if (this.boss) {
-      info.push(`BOSS ${this.boss.label} ${Math.max(0, Math.ceil(this.boss.hp))}/${this.boss.maxHp}`);
+      this.bossHud?.show(this.boss.label);
+      this.bossHud?.setHp(this.boss.hp, this.boss.maxHp);
+    } else {
+      this.bossHud?.hide();
     }
-    this.hud.setInfo(info);
   }
 
   exit(ctx: GameContext): void {
@@ -1312,6 +1324,8 @@ export class TowerMode implements GameMode, MeleeTargetProvider {
     ctx.ui.showHud(false);
     this.hud?.dispose();
     this.hud = null;
+    this.bossHud?.dispose();
+    this.bossHud = null;
     this.ctx = null;
   }
 }

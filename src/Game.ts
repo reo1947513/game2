@@ -11,6 +11,7 @@ import { TouchControls } from "./TouchControls";
 import { ModeUI } from "./ModeUI";
 import { GameContext, ModeManager, TargetRush, MovingRange, Parkour, WaveSurvival, BotDeathmatch } from "./GameModes";
 import { Health } from "./Health";
+import { DamageVignette } from "./combat/DamageVignette";
 import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
@@ -63,6 +64,7 @@ export class Game {
   private touch: TouchControls;
   private ui: ModeUI;
   private health: Health;
+  private dmgVignette = new DamageVignette(); // 被弾時の画面外周・赤フラッシュ
   private modeManager: ModeManager;
   private ctx: GameContext;
 
@@ -165,6 +167,8 @@ export class Game {
       this.slashTrail
     );
     this.health = new Health();
+    // 被弾時に画面の淵を赤くする（失ったHP量で濃さを決める。最小0.3・最大0.9）。
+    this.health.onDamage((lost) => this.dmgVignette.trigger(0.3 + Math.min(0.6, lost / 50)));
     this.grenades = new GrenadeSystem(
       this.scene,
       this.camera,
@@ -544,14 +548,50 @@ export class Game {
 
   // サバイバルのラウンド切替時、自分を棟の屋上スポーンへ再配置する（IDで棟を分散）。
   private respawnToRooftopSpawn(): void {
-    const spawns = roofSpawnPoints();
-    if (spawns.length === 0) return;
-    let h = 0;
-    const id = this.network.playerId || "";
-    for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % spawns.length;
-    const s = spawns[h].pos;
+    const cands = roofSpawnPoints().map((s) => new THREE.Vector3(s.pos.x, s.pos.y, s.pos.z));
+    if (cands.length === 0) return;
+    const s = this.pickSpawnAwayFromEnemies(cands); // 敵から離れた屋上へ無作為に
     this.player.respawn(s.x, s.y, s.z);
     this.ziplineRide = null;
+  }
+
+  // 現在のモードに応じたリスポーン地点を返す（敵から離れた無作為地点）。
+  // ルーフトップ系は5棟の屋上、チームデスマッチはステージの候補、その他は既定スポーン。
+  private respawnPoint(): THREE.Vector3 {
+    if (this.isRooftop()) {
+      const cands = roofSpawnPoints().map((s) => new THREE.Vector3(s.pos.x, s.pos.y, s.pos.z));
+      return this.pickSpawnAwayFromEnemies(cands);
+    }
+    if (this.onlineMode === "tdm" && this.stage.spawns.length > 0) {
+      return this.pickSpawnAwayFromEnemies(this.stage.spawns);
+    }
+    return this.stage.playerSpawn.clone();
+  }
+
+  // リスポーン候補から、敵（他プレイヤー）に最も遠い上位を選び、その中から無作為に1つ返す。
+  // 候補が少なく敵が多い状況でも単調にならないよう、最遠の数地点からランダムに出す。
+  private pickSpawnAwayFromEnemies(candidates: THREE.Vector3[]): THREE.Vector3 {
+    if (candidates.length === 0) return this.stage.playerSpawn.clone();
+    const enemies: THREE.Vector3[] = [];
+    for (const rp of this.remotePlayers.values()) enemies.push(rp.group.position);
+    if (enemies.length === 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)].clone();
+    }
+    // 各候補について、最寄りの敵までの水平距離（の2乗）を求める。
+    const scored = candidates.map((c) => {
+      let nearest = Infinity;
+      for (const e of enemies) {
+        const dx = c.x - e.x;
+        const dz = c.z - e.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < nearest) nearest = d2;
+      }
+      return { pos: c, nearest };
+    });
+    // 最寄り敵が遠い順に並べ、上位（最大3地点）から無作為に選ぶ。
+    scored.sort((a, b) => b.nearest - a.nearest);
+    const top = scored.slice(0, Math.min(3, scored.length));
+    return top[Math.floor(Math.random() * top.length)].pos.clone();
   }
 
   // ===== ルーフトップ演出（収縮ゾーンの赤フォグ／ジップライン滑走スパーク）=====
@@ -905,8 +945,9 @@ export class Game {
       if (p.shooterId === self) this.hud.flashHitmarker(); // 自分が当てた → ヒットマーカー
     } else if (ev.type === "KILL") {
       if (p.targetId === self) {
-        const sp = this.stage.playerSpawn;
+        const sp = this.respawnPoint(); // モードに応じた、敵から離れたリスポーン地点
         this.player.respawn(sp.x, sp.y, sp.z); // 自分が倒された → スポーンへ
+        this.dmgVignette.reset(); // リスポーン時に被弾の赤を消す
       }
       if (this.onlineMode === "tdm") {
         // チームカラー付きキルフィード
@@ -1189,6 +1230,7 @@ export class Game {
       this.grenades.handleInput(inputState, !dead);
     }
     this.grenades.update(dt, this.stage.colliders);
+    this.dmgVignette.update(dt); // 被弾ビネットのフェード更新
     this.stage.updateTargets(now);
     // 現在のモードの更新（スコア・残り時間・的の動き・終了判定など）
     this.modeManager.update(this.ctx, dt, now);

@@ -69,6 +69,9 @@ export class Stage {
   readonly targets: Target[] = [];
   // プレイヤーの開始・復活位置（ステージごとに異なる）
   readonly playerSpawn = new THREE.Vector3(0, 0, 8);
+  // 対人モード（チームデスマッチ）のリスポーン候補。敵と距離を取るため複数用意する。
+  // dusk / skyframe で設定。skyline（ルーフトップ）は屋上スポーンを別途 Game 側で扱う。
+  readonly spawns: THREE.Vector3[] = [];
 
   // 現在のステージID
   stageId: StageId;
@@ -92,13 +95,41 @@ export class Stage {
     if (stageId === "dusk") {
       this.buildDusk();
       this.playerSpawn.set(0, 0, 8);
+      // DUSK：壁内(±30)で、中央の階段・カバー・壁ジャンプ壁・的を避けた地面の8地点。
+      this.setSpawns([
+        [0, 0, 25],
+        [25, 0, 25],
+        [-25, 0, 25],
+        [27, 0, 4],
+        [-27, 0, -2],
+        [25, 0, -25],
+        [-25, 0, -24],
+        [-2, 0, -26],
+      ]);
     } else if (stageId === "skyline") {
       const spawn = buildSkylineFive(this.makeContext());
       this.playerSpawn.copy(spawn);
     } else {
       const spawn = buildSkyframe(this.makeContext());
       this.playerSpawn.copy(spawn);
+      // SKYFRAME：タワー躯体(±15)と地上ヤードの資材を避け、四方に散らした地面の8地点。
+      this.setSpawns([
+        [0, 0, 46],
+        [0, 0, -50],
+        [50, 0, 4],
+        [-52, 0, -4],
+        [46, 0, 46],
+        [-50, 0, 46],
+        [48, 0, -46],
+        [-54, 0, -22],
+      ]);
     }
+  }
+
+  // 対人リスポーン候補をまとめて設定する（既存を消してから詰め直す）。
+  private setSpawns(pts: Array<[number, number, number]>): void {
+    this.spawns.length = 0;
+    for (const [x, y, z] of pts) this.spawns.push(new THREE.Vector3(x, y, z));
   }
 
   // skyframe など外部build関数へ渡す道具一式を作る。
@@ -137,6 +168,7 @@ export class Stage {
     }
     this.colliders.length = 0;
     this.targets.length = 0;
+    this.spawns.length = 0;
     this.dynamicUpdaters.length = 0;
     this.scene.fog = null;
     this.scene.background = null;

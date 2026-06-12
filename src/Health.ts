@@ -10,6 +10,8 @@ export class Health {
   private label: HTMLElement;
   // 無敵モード（DEV RANGE 用）。既定 false で通常挙動。true の間 damage() を無効化する。
   private invincible = false;
+  // 被弾通知。実際にHPが減ったときに「失ったHP量」を渡して呼ぶ（赤ビネット演出用）。
+  private onDamageCb: ((lost: number) => void) | null = null;
 
   constructor(max = 100) {
     this.max = max;
@@ -44,13 +46,21 @@ export class Health {
 
   damage(amount: number): void {
     if (this.invincible) return; // DEV RANGE 無敵モード中はダメージを無効化
+    const before = this.current;
     this.current = Math.max(0, this.current - amount);
+    const lost = before - this.current;
+    if (lost > 0 && this.onDamageCb) this.onDamageCb(lost); // 赤ビネット等へ被弾を通知
     this.update();
   }
 
   // 無敵モードの切替（DEV RANGE 用）。
   setInvincible(on: boolean): void {
     this.invincible = on;
+  }
+
+  // 被弾時のコールバックを登録する（失ったHP量を渡す。赤ビネット演出などに使う）。
+  onDamage(cb: (lost: number) => void): void {
+    this.onDamageCb = cb;
   }
 
   heal(amount: number): void {
@@ -60,7 +70,10 @@ export class Health {
 
   // 現在値を直接セットする（オンラインのサーバー権威HPを反映する用）。
   set(value: number): void {
+    const before = this.current;
     this.current = Math.max(0, Math.min(this.max, value));
+    const lost = before - this.current;
+    if (lost > 0 && this.onDamageCb) this.onDamageCb(lost); // オンライン被弾を赤ビネット等へ通知
     this.update();
   }
 

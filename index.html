@@ -552,6 +552,21 @@
         pointer-events: none;
         z-index: 100;
       }
+      /* 被弾時に画面の淵が赤くなるダメージビネット。中央は透明・外周だけ赤。
+         不透明度はJS(DamageVignette)が毎フレーム設定するためtransitionは付けない。 */
+      #dmgVignette {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 99;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(180, 0, 0, 0) 40%,
+          rgba(160, 0, 0, 0.45) 72%,
+          rgba(120, 0, 0, 0.92) 100%
+        );
+      }
       #grenade-count {
         position: absolute;
         right: 24px;
@@ -600,6 +615,7 @@
       <div id="melee-banner"></div>
       <div id="killfeed"></div>
       <div id="grenade-count"></div>
+      <div id="dmgVignette"></div>
       <div id="flashWhite"></div>
     </div>
 

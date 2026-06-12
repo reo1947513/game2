@@ -67,6 +67,8 @@ const ACTIONS: ActionDef[] = [
   { key: "grenade", label: "手榴弾", type: "hold" },
   // 閃光弾（タップで投擲）。キーボードのCキーと同じ flashThrow 入力を呼ぶ。
   { key: "flash", label: "閃光弾", type: "tap" },
+  // 蘇生（コープ専用、長押し）。既定は非表示で、コープ開始時に表示する。
+  { key: "revive", label: "蘇生", type: "hold" },
 ];
 
 // サイズ編集の見出しに使う、要素ごとの表示名
@@ -83,6 +85,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   knife: "ナイフ",
   grenade: "手榴弾",
   flash: "閃光弾",
+  revive: "蘇生",
 };
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
@@ -102,6 +105,7 @@ const DEFAULT_LAYOUT: Layout = {
     knife: { x: 60, y: 24 },
     grenade: { x: 73, y: 28 },
     flash: { x: 64, y: 40 },
+    revive: { x: 50, y: 60 },
   },
   scales: {},
 };
@@ -564,6 +568,7 @@ export class TouchControls {
           b.setPointerCapture(e.pointerId);
           this.holdId[def.key] = e.pointerId;
           if (def.key === "grenade") this.input.setGrenadeHeld(true);
+          else if (def.key === "revive") this.input.setTouchRevive(true);
           else this.input.setTouchHold(def.key as HoldKey, true);
           b.classList.add("active");
         }
@@ -576,6 +581,7 @@ export class TouchControls {
         if (def.type === "hold" && this.holdId[def.key] === e.pointerId) {
           this.holdId[def.key] = null;
           if (def.key === "grenade") this.input.setGrenadeHeld(false);
+          else if (def.key === "revive") this.input.setTouchRevive(false);
           else this.input.setTouchHold(def.key as HoldKey, false);
           b.classList.remove("active");
         }
@@ -796,6 +802,20 @@ export class TouchControls {
     // 設定画面のスライダー値を現在のレイアウトに同期
     this.sizeSlider.value = String(this.layout.size);
     this.opacitySlider.value = String(Math.round(this.layout.opacity * 100));
+
+    this.updateReviveVis();
+  }
+
+  // 蘇生ボタンはコープ時のみ表示する（編集中は配置できるよう常に表示）。
+  private reviveWanted = false;
+  setReviveVisible(v: boolean): void {
+    this.reviveWanted = v;
+    this.updateReviveVis();
+  }
+  private updateReviveVis(): void {
+    const b = this.btnMap["revive"];
+    if (!b) return;
+    b.style.display = this.mode === "edit" || this.reviveWanted ? "" : "none";
   }
 
   private placeEl(elm: HTMLElement, p: Vec2): void {

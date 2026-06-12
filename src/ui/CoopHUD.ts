@@ -226,6 +226,22 @@ export class CoopHUD {
       #coop-hud .coop-result-btn:hover { background: #ffdd97; }
       #coop-hud .coop-feed { position: absolute; top: 64px; right: 18px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
       #coop-hud .coop-feed-row { background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 5px; font-size: 13px; font-weight: 800; color: #9ff0b0; text-shadow: 0 1px 2px rgba(0,0,0,0.85); letter-spacing: 0.03em; }
+
+      /* スマホ・タブレット横画面（低い画面）向けの縮小とセーフエリア回避 */
+      @media (orientation: landscape) and (max-height: 520px) {
+        #coop-hud .coop-top { top: calc(8px + env(safe-area-inset-top, 0px)); font-size: 13px; }
+        #coop-hud .coop-list { top: 40px; left: calc(8px + env(safe-area-inset-left, 0px)); gap: 4px; }
+        #coop-hud .coop-row { min-width: 150px; padding: 3px 7px; gap: 6px; }
+        #coop-hud .coop-name { width: 48px; font-size: 11px; }
+        #coop-hud .coop-bar { height: 8px; }
+        #coop-hud .coop-status { width: 40px; font-size: 10px; }
+        #coop-hud .coop-feed { top: 40px; right: calc(8px + env(safe-area-inset-right, 0px)); }
+        #coop-hud .coop-feed-row { font-size: 11px; padding: 3px 7px; }
+        #coop-hud .coop-revive { width: 240px; top: 56%; }
+        #coop-hud .coop-revive-label { font-size: 12px; }
+        #coop-hud .coop-result-title { font-size: 34px; }
+        #coop-hud .coop-result-sub { font-size: 16px; }
+      }
     `;
     document.head.appendChild(style);
   }

@@ -264,6 +264,20 @@ export class TeamHUD {
         color: #1a1a1a; background: #ffd27a; border: none; border-radius: 10px; cursor: pointer;
       }
       #tdm-hud .tdm-result-btn:hover { background: #ffdd97; }
+
+      /* スマホ・タブレット横画面（低い画面）向けの縮小とセーフエリア回避 */
+      @media (orientation: landscape) and (max-height: 520px) {
+        #tdm-hud .tdm-bar { top: calc(8px + env(safe-area-inset-top, 0px)); gap: 10px; }
+        #tdm-hud .tdm-chip { padding: 3px 9px; }
+        #tdm-hud .tdm-kills { font-size: 15px; min-width: 18px; }
+        #tdm-hud .tdm-timer { font-size: 15px; min-width: 54px; }
+        #tdm-hud .tdm-feed { top: 44px; right: calc(10px + env(safe-area-inset-right, 0px)); }
+        #tdm-hud .tdm-feed-row { font-size: 11px; padding: 2px 7px; }
+        #tdm-hud .tdm-elim-title { font-size: 30px; }
+        #tdm-hud .tdm-elim-count { font-size: 14px; }
+        #tdm-hud .tdm-result-title { font-size: 38px; }
+        #tdm-hud .tdm-result-score { font-size: 18px; }
+      }
     `;
     document.head.appendChild(style);
   }

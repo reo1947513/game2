@@ -417,6 +417,8 @@ export class Game {
       // コープでも近接は敵に当たる
       this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
     }
+    // タッチ端末では蘇生ボタンをコープ時のみ表示する
+    this.touch.setReviveVisible(mode === "coop");
 
     this.online = true;
     this.paused = false;
@@ -633,6 +635,7 @@ export class Game {
     this.melee.onSwingHit = null;
     this.teamHud.hide();
     this.coopHud.hide();
+    this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();
     for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);

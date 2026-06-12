@@ -259,6 +259,8 @@ export class RoomLobbyUI {
         padding: 24px 28px;
         width: 380px;
         max-width: 90vw;
+        max-height: 92vh;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 14px;

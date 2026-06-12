@@ -34,6 +34,7 @@ export class Input {
   private touchAiming = false;
   private touchSprint = false;
   private touchCrouch = false;
+  private touchRevive = false; // 蘇生ボタン（コープ）押下中
   private touchSensitivity = 0.004;
 
   constructor(private canvas: HTMLElement) {
@@ -156,6 +157,11 @@ export class Input {
   }
 
   // 押しっぱなし系ボタン（射撃・ADS・ダッシュ・しゃがみ）の状態
+  // 蘇生（コープ）のタッチ長押し状態。
+  setTouchRevive(pressed: boolean): void {
+    this.touchRevive = pressed;
+  }
+
   setTouchHold(action: "fire" | "ads" | "sprint" | "crouch", pressed: boolean): void {
     if (action === "fire") this.touchFiring = pressed;
     else if (action === "ads") this.touchAiming = pressed;
@@ -223,7 +229,7 @@ export class Input {
       fragHeld: this.fragHeldDown,
       fragReleased: this.fragReleasedQueued,
       flashThrow: this.flashQueued,
-      interactHeld: this.keys.has("KeyE"),
+      interactHeld: this.keys.has("KeyE") || this.touchRevive,
       yaw: this.yaw,
       pitch: this.pitch,
     };

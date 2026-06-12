@@ -509,6 +509,16 @@ export class TouchControls {
     };
     this.joyBase.addEventListener("pointerup", end);
     this.joyBase.addEventListener("pointercancel", end);
+    // 保険: 何らかの理由でポインタ捕捉が外れた場合（ブラウザのジェスチャ誤認など）、
+    // 移動入力が斜めのまま固定化されないよう、その場で 0 に戻す。
+    this.joyBase.addEventListener("lostpointercapture", (e) => {
+      if (this.mode !== "play") return;
+      if (e.pointerId !== this.joyId) return;
+      this.joyId = null;
+      this.joyKnob.style.transform = "translate(-50%, -50%)";
+      this.input.setTouchMove(0, 0);
+      this.clearSprint();
+    });
   }
 
   private updateJoystick(cx: number, cy: number): void {
@@ -988,6 +998,11 @@ export class TouchControls {
         border-radius: 50%;
         background: rgba(255, 200, 80, calc(var(--tc-opacity) * 0.85));
         box-shadow: 0 0 10px rgba(255, 170, 60, 0.5);
+        /* つまみは見た目だけの飾り。指の当たり判定は常に外側の円(joyBase)へ通す。
+           これを none にしないと、中央を押したとき当たり判定がつまみになり、
+           斜めドラッグをブラウザがスクロールと誤認して入力が固定化される。 */
+        pointer-events: none;
+        touch-action: none;
       }
       #touch-root .tc-btn {
         position: absolute;

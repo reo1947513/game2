@@ -44,6 +44,20 @@ export interface Box {
 
 export type Team = "RED" | "BLUE";
 
+// チームデスマッチの1人分の集計（スコアボード・リザルト内訳用）。
+export interface TDMPlayerShared {
+  playerId: string;
+  team: Team;
+  kills: number;
+  deaths: number;
+  assists: number;
+  score: number;
+  high: number;
+  melee: number;
+  grenade: number;
+  streak: number;
+}
+
 // チームデスマッチの共有状態（WorldStateに同梱されて配られる）。
 export interface TDMShared {
   phase: "PLAYING" | "RESULT";
@@ -54,6 +68,7 @@ export interface TDMShared {
   teams: Record<string, Team>; // playerId → チーム
   respawn: Record<string, number>; // playerId → 復活までの残り秒（0=生存）
   winner?: Team | "DRAW";
+  players: TDMPlayerShared[];
 }
 
 // ===== コープ・ガントレット =====

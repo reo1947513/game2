@@ -36,6 +36,7 @@ export interface InputState {
   fragReleased: boolean; // フラグ投擲ボタンを離した瞬間（投擲）
   flashThrow: boolean; // フラッシュバン投擲（押した瞬間）
   interactHeld: boolean; // インタラクト（Eキー）長押し中。コープの蘇生に使う。
+  scoreboardHeld: boolean; // スコアボード表示（TABキー）長押し中。TDMで使う。
   // 視点（マウス移動の累積から計算した向き）
   yaw: number;
   pitch: number;

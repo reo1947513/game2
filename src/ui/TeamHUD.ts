@@ -15,6 +15,7 @@ export class TeamHUD {
   private elimCount: HTMLElement;
   private result: HTMLElement;
   private resultInner: HTMLElement;
+  private scoreboard: HTMLElement;
   private onClose: (() => void) | null = null;
 
   constructor() {
@@ -81,11 +82,48 @@ export class TeamHUD {
     this.resultInner.className = "tdm-result-inner";
     this.result.appendChild(this.resultInner);
 
+    // スコアボード（TAB長押し中に表示）
+    this.scoreboard = document.createElement("div");
+    this.scoreboard.className = "tdm-board";
+    this.scoreboard.style.display = "none";
+
     this.root.appendChild(bar);
     this.root.appendChild(this.feed);
     this.root.appendChild(this.elim);
+    this.root.appendChild(this.scoreboard);
     this.root.appendChild(this.result);
     document.body.appendChild(this.root);
+  }
+
+  // スコアボードのHTMLを組み立てる（withBreakdown でキル種別の内訳列を追加）。
+  private buildBoard(
+    tdm: TDMShared,
+    selfId: string,
+    nameOf: (id: string) => string,
+    withBreakdown: boolean
+  ): string {
+    const rows = [...tdm.players].sort((a, b) => b.score - a.score);
+    const head = withBreakdown
+      ? `<tr><th>プレイヤー</th><th>K</th><th>D</th><th>A</th><th>高</th><th>近</th><th>グレ</th><th>連</th><th>SCORE</th></tr>`
+      : `<tr><th>プレイヤー</th><th>K</th><th>D</th><th>A</th><th>SCORE</th></tr>`;
+    const body = rows
+      .map((p) => {
+        const teamCls = p.team === "RED" ? "tdm-row-red" : "tdm-row-blue";
+        const selfCls = p.playerId === selfId ? " tdm-row-self" : "";
+        const name = this.escape(nameOf(p.playerId));
+        const extra = withBreakdown
+          ? `<td>${p.high}</td><td>${p.melee}</td><td>${p.grenade}</td><td>${p.streak}</td>`
+          : "";
+        return `<tr class="${teamCls}${selfCls}"><td class="tdm-cell-name">${name}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.assists}</td>${extra}<td class="tdm-cell-score">${p.score}</td></tr>`;
+      })
+      .join("");
+    return `<table class="tdm-board-table">${head}${body}</table>`;
+  }
+
+  private escape(s: string): string {
+    return s.replace(/[&<>"]/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"
+    );
   }
 
   show(): void {
@@ -102,7 +140,13 @@ export class TeamHUD {
   }
 
   // 毎フレームのスコア・タイマー・死亡状態の更新。
-  update(tdm: TDMShared, selfId: string): void {
+  // scoreboardHeld が true（TAB長押し中）のときはスコアボードを表示する。
+  update(
+    tdm: TDMShared,
+    selfId: string,
+    nameOf: (id: string) => string,
+    scoreboardHeld: boolean
+  ): void {
     this.redKills.textContent = String(tdm.kills.RED);
     this.blueKills.textContent = String(tdm.kills.BLUE);
     this.timer.textContent = this.formatTime(tdm.timeRemaining);
@@ -113,8 +157,18 @@ export class TeamHUD {
 
     if (tdm.phase === "RESULT") {
       this.elim.style.display = "none";
+      this.scoreboard.style.display = "none"; // リザルト側に内訳付きで出す
       return;
     }
+
+    // TAB長押し中のスコアボード
+    if (scoreboardHeld) {
+      this.scoreboard.innerHTML = this.buildBoard(tdm, selfId, nameOf, false);
+      this.scoreboard.style.display = "flex";
+    } else {
+      this.scoreboard.style.display = "none";
+    }
+
     const rs = tdm.respawn[selfId] ?? 0;
     if (rs > 0) {
       this.elim.style.display = "flex";
@@ -151,10 +205,11 @@ export class TeamHUD {
     }, 5000);
   }
 
-  // 終了時のリザルト表示。
-  showResult(tdm: TDMShared, onClose: () => void): void {
+  // 終了時のリザルト表示（スコアボード＋キル種別ボーナスの内訳付き）。
+  showResult(tdm: TDMShared, selfId: string, nameOf: (id: string) => string, onClose: () => void): void {
     this.onClose = onClose;
     this.elim.style.display = "none";
+    this.scoreboard.style.display = "none";
     const winner = tdm.winner ?? "DRAW";
     let title = "DRAW";
     let cls = "tdm-win-draw";
@@ -165,13 +220,13 @@ export class TeamHUD {
       title = "BLUE WINS";
       cls = "tdm-win-blue";
     }
-    this.resultInner.innerHTML = "";
-    const h = document.createElement("div");
-    h.className = `tdm-result-title ${cls}`;
-    h.textContent = title;
-    const score = document.createElement("div");
-    score.className = "tdm-result-score";
-    score.textContent = `RED ${tdm.kills.RED}  —  ${tdm.kills.BLUE} BLUE`;
+    const legend =
+      "通常 100 ／ 高所 150 ／ 近接 200 ／ グレネード 180 ／ 連続キル +50 ／ アシスト 50";
+    this.resultInner.innerHTML =
+      `<div class="tdm-result-title ${cls}">${title}</div>` +
+      `<div class="tdm-result-score">RED ${tdm.kills.RED}  —  ${tdm.kills.BLUE} BLUE</div>` +
+      `<div class="tdm-board-wrap">${this.buildBoard(tdm, selfId, nameOf, true)}</div>` +
+      `<div class="tdm-legend">${legend}</div>`;
     const btn = document.createElement("button");
     btn.className = "tdm-result-btn";
     btn.textContent = "ロビーに戻る";
@@ -179,8 +234,6 @@ export class TeamHUD {
       this.result.style.display = "none";
       this.onClose?.();
     };
-    this.resultInner.appendChild(h);
-    this.resultInner.appendChild(score);
     this.resultInner.appendChild(btn);
     this.result.style.display = "flex";
   }
@@ -264,6 +317,24 @@ export class TeamHUD {
         color: #1a1a1a; background: #ffd27a; border: none; border-radius: 10px; cursor: pointer;
       }
       #tdm-hud .tdm-result-btn:hover { background: #ffdd97; }
+      #tdm-hud .tdm-board {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        flex-direction: column; align-items: center;
+        background: rgba(0,0,0,0.66); padding: 14px 18px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.18);
+      }
+      #tdm-hud .tdm-board-wrap { margin: 4px 0 2px; }
+      #tdm-hud .tdm-board-table { border-collapse: collapse; color: #eee; font-size: 14px; }
+      #tdm-hud .tdm-board-table th, #tdm-hud .tdm-board-table td {
+        padding: 4px 10px; text-align: center; font-weight: 700;
+      }
+      #tdm-hud .tdm-board-table th { color: #ffd27a; font-size: 12px; letter-spacing: 0.05em; }
+      #tdm-hud .tdm-board-table .tdm-cell-name { text-align: left; min-width: 90px; }
+      #tdm-hud .tdm-board-table .tdm-cell-score { color: #ffe6b0; }
+      #tdm-hud .tdm-board-table .tdm-row-red .tdm-cell-name { color: #ff6a55; }
+      #tdm-hud .tdm-board-table .tdm-row-blue .tdm-cell-name { color: #6aa0ff; }
+      #tdm-hud .tdm-board-table .tdm-row-self td { background: rgba(255,255,255,0.10); }
+      #tdm-hud .tdm-legend { color: #c9d2dc; font-size: 12px; margin-top: 6px; text-align: center; }
 
       /* スマホ・タブレット横画面（低い画面）向けの縮小とセーフエリア回避 */
       @media (orientation: landscape) and (max-height: 520px) {

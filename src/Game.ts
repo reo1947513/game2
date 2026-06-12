@@ -78,6 +78,7 @@ export class Game {
   private coopHud = new CoopHUD(); // コープ用HUD
   private remoteEnemies = new Map<string, RemoteEnemy>(); // サーバー権威の敵ゴースト
   private coopResultShown = false; // コープのリザルトを表示済みか
+  private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -461,6 +462,9 @@ export class Game {
 
     for (const rp of this.remotePlayers.values()) rp.update(100); // renderDelay 100ms
 
+    // TDM：TAB長押しでスコアボード表示（onWorldStateで反映）
+    this.scoreboardHeld = inputState.scoreboardHeld;
+
     // コープ：敵ゴーストを毎フレーム滑らかに寄せ、蘇生入力（E長押し）を送る。
     if (this.onlineMode === "coop") {
       for (const re of this.remoteEnemies.values()) re.update(dt);
@@ -506,12 +510,13 @@ export class Game {
 
     // チームデスマッチ：スコア・タイマー・死亡表示の更新、終了時のリザルト。
     if (this.onlineMode === "tdm" && world.tdm) {
-      this.teamHud.update(world.tdm, this.network.playerId);
+      const nameOf = (id: string): string => this.playerName(id);
+      this.teamHud.update(world.tdm, this.network.playerId, nameOf, this.scoreboardHeld);
       if (world.tdm.phase === "RESULT" && !this.tdmResultShown) {
         this.tdmResultShown = true;
         this.suppressUnlockMenu = true;
         if (document.exitPointerLock) document.exitPointerLock();
-        this.teamHud.showResult(world.tdm, () => this.showMenu());
+        this.teamHud.showResult(world.tdm, this.network.playerId, nameOf, () => this.showMenu());
       }
     }
 

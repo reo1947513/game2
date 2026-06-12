@@ -80,7 +80,7 @@ export class Input {
     this.keys.add(code);
     // ブラウザ既定動作（スクロール等）を抑止
     if (
-      ["Space", "KeyW", "KeyA", "KeyS", "KeyD", "ControlLeft", "ControlRight"].includes(code)
+      ["Space", "KeyW", "KeyA", "KeyS", "KeyD", "ControlLeft", "ControlRight", "Tab"].includes(code)
     ) {
       e.preventDefault();
     }
@@ -230,6 +230,7 @@ export class Input {
       fragReleased: this.fragReleasedQueued,
       flashThrow: this.flashQueued,
       interactHeld: this.keys.has("KeyE") || this.touchRevive,
+      scoreboardHeld: this.keys.has("Tab"),
       yaw: this.yaw,
       pitch: this.pitch,
     };

@@ -145,6 +145,11 @@ export class NetworkManager {
     this.send({ type: "REVIVE", payload: { active } });
   }
 
+  // ジップライン乗り込み要求（ROOFTOP DUEL）。承認可否はサーバーが判定し WorldState で配る。
+  useZipline(ziplineId: string): void {
+    this.send({ type: "USE_ZIPLINE", payload: { ziplineId } });
+  }
+
   // 5秒ごとに PING を送って RTT を計測する。
   startPing(): void {
     this.stopPing();

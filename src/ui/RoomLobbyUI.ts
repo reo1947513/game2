@@ -63,6 +63,7 @@ export class RoomLobbyUI {
     const modeOpts: Array<{ label: string; value: string }> = [
       { label: "チームデスマッチ", value: "tdm" },
       { label: "コープ", value: "coop" },
+      { label: "ルーフトップ", value: "rooftop" },
       { label: "自由", value: "online" },
     ];
     for (const o of modeOpts) {
@@ -73,8 +74,9 @@ export class RoomLobbyUI {
       b.onclick = () => {
         this.selectedMode = o.value;
         for (const mb of this.modeBtns) paint(mb, mb === b);
-        // 人数選択はチームデスマッチのみ意味がある（コープ・自由は隠す）
-        this.sizeRow.style.display = o.value === "tdm" ? "flex" : "none";
+        // 人数選択はチームデスマッチとルーフトップで意味がある（コープ・自由は隠す）
+        this.sizeRow.style.display =
+          o.value === "tdm" || o.value === "rooftop" ? "flex" : "none";
       };
       this.modeBtns.push(b);
       modeRow.appendChild(b);

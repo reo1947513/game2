@@ -301,7 +301,7 @@ export class Game {
         this.ensureConnected(url)
           .then(() =>
             this.network
-              .createRoom(maxPlayers, mode, this.selectedStageId)
+              .createRoom(maxPlayers, mode, mode === "rooftop" ? "skyline" : this.selectedStageId)
               .then(({ roomCode }) => {
                 this.lobby.setCode(roomCode);
                 this.lobby.setRoster(
@@ -373,7 +373,7 @@ export class Game {
     this.melee.cancel();
     this.modeManager.stop(this.ctx);
     const sid: StageId =
-      stage === "dusk" || stage === "skyframe"
+      stage === "dusk" || stage === "skyframe" || stage === "skyline"
         ? (stage as StageId)
         : this.selectedStageId;
     this.switchStage(sid);

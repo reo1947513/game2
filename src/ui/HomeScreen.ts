@@ -27,6 +27,8 @@ export interface HomeOptions {
   selectedDifficulty: string;
   onDifficulty: (id: string) => void;
   onSettings: () => void;
+  // DEV RANGE 隠し入口：v0.0.1 の3クリックで発火（dev時のみ Game が渡す。本番では未指定）。
+  onDevGesture?: () => void;
 }
 
 // モードidに対応するアイコン（24x24・線画）。未知のidには汎用アイコンを返す。
@@ -335,6 +337,19 @@ const STYLE = `
   display: block; font-size: 10px; letter-spacing: 2px; font-weight: 700;
   color: rgba(26,18,6,0.7); margin-top: 4px;
 }
+/* フッター中央の控えめなバージョン表記（DEV RANGE の隠し入口を兼ねる） */
+#home-screen .hs-version {
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #6b7480;
+  cursor: default;
+  user-select: none;
+}
 
 @media (max-width: 760px) {
   #home-screen .hs-nav, #home-screen .hs-prof-lv, #home-screen .hs-xp { display: none; }
@@ -509,6 +524,7 @@ export class HomeScreen {
             <button class="hs-ghost" data-noop="1">トレーニングモード</button>
           </div>
         </div>
+        <div class="hs-version" id="hs-version">v0.0.1</div>
       </div>
     `;
 
@@ -567,5 +583,27 @@ export class HomeScreen {
           .forEach((c) => c.classList.toggle("active", c === el));
       });
     });
+
+    // DEV RANGE 隠し入口：v0.0.1 を5秒以内に3回クリックで onDevGesture を呼ぶ。
+    // onDevGesture は dev 時のみ Game から渡される（本番では未指定なので何も起きない）。
+    const ver = this.root.querySelector<HTMLElement>("#hs-version");
+    const gesture = o.onDevGesture;
+    if (ver && gesture) {
+      let clicks = 0;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      ver.addEventListener("click", () => {
+        clicks++;
+        if (clicks === 1) {
+          timer = setTimeout(() => {
+            clicks = 0;
+          }, 5000);
+        }
+        if (clicks >= 3) {
+          if (timer) clearTimeout(timer);
+          clicks = 0;
+          gesture();
+        }
+      });
+    }
   }
 }

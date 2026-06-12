@@ -92,6 +92,12 @@ export class TargetsPanel implements DevPanel {
     this.refreshCount();
   }
 
+  // DEV RANGE 終了時：全的削除＋命中フック解除。
+  dispose(): void {
+    this.clearAll();
+    this.app.ctx.weapons.enemyHitHook = null;
+  }
+
   private clearAll(): void {
     const ctx = this.app.ctx;
     for (const t of this.targets) {

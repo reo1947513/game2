@@ -202,6 +202,11 @@ export class WeaponPanel implements DevPanel {
     return row;
   }
 
+  // DEV RANGE 終了時：全武器スペックを既定へ復帰。
+  resetAll(): void {
+    for (const k of ORDER) this.resetSpec(k);
+  }
+
   private resetSpec(kind: WeaponKind): void {
     const def = this.defaults.get(kind);
     if (!def) return;

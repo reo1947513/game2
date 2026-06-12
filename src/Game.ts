@@ -121,6 +121,8 @@ export class Game {
   private screen: "menu" | "playing" | "result" = "menu";
   // 結果表示などで意図的にロックを外したときに、メニューを開かないようにする目印
   private suppressUnlockMenu = false;
+  // DEV RANGE：メニューの隠しジェスチャ（v0.0.1 3クリック）発火時に呼ぶ。dev時のみ main が設定。
+  private devGesture: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
     // レンダラー
@@ -237,6 +239,29 @@ export class Game {
     this.showMenu();
   }
 
+  // ===== DEV RANGE 入口（dev時のみ main から配線・本番では未使用）=====
+  // メニューの隠しジェスチャ発火時に呼ぶコールバックを登録する。
+  setDevGesture(cb: () => void): void {
+    this.devGesture = cb;
+  }
+
+  // DEV RANGE 起動前：メニューを隠し、メインループを止める。
+  enterDevRange(): void {
+    this.home.hide();
+    this.stopLoop();
+  }
+
+  // DEV RANGE 終了後：メインループを再開しメニューへ戻る。
+  resumeToMenu(): void {
+    this.ensureLoop();
+    this.showMenu();
+  }
+
+  // メインループを停止する（loop 冒頭の running ガードで次フレームから止まる）。
+  stopLoop(): void {
+    this.running = false;
+  }
+
   // ===== DEV RANGE 用アクセサ（開発時のみ使用。本番ビルドからは呼ばれない） =====
   // 開発者テストレンジ DevRange が内部システムを直接操作するために必要な参照だけを返す。
   // 追加のみの無害なメソッドで、通常プレイの挙動には一切関与しない。
@@ -302,6 +327,7 @@ export class Game {
         this.selectedDifficulty = did === "hard" ? "hard" : "normal";
       },
       onSettings: () => this.settings.open(),
+      onDevGesture: this.devGesture ?? undefined,
     });
   }
 
@@ -1061,6 +1087,7 @@ export class Game {
   };
 
   private loop = (): void => {
+    if (!this.running) return; // stopLoop() で停止（DEV RANGE 起動中）
     requestAnimationFrame(this.loop);
 
     // 経過時間。タブ復帰などで跳ねないよう上限を設ける。

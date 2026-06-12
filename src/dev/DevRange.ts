@@ -29,26 +29,32 @@ const TABS: Array<{ id: TabId; label: string }> = [
 export class DevRange implements DevApp {
   readonly ctx: DevCtx;
 
-  private hud: DevHUD;
+  private hud!: DevHUD;
   private devCamera: DevCamera;
 
   private clock = new THREE.Clock();
   private eye = new THREE.Vector3();
 
   private content!: HTMLDivElement;
+  private panelRoot: HTMLDivElement | null = null;
   private tabButtons = new Map<TabId, HTMLButtonElement>();
   private panels!: Record<TabId, DevPanel>;
   private activeTab: TabId = "weapon";
 
   private cameraMode: CameraMode = "fps";
+  private running = false;
+  private onExit: (() => void) | null = null;
+  private canvasClick: (() => void) | null = null;
 
   constructor(game: Game) {
     this.ctx = game.devContext();
-    this.hud = new DevHUD();
     this.devCamera = new DevCamera(this.ctx);
   }
 
-  start(): void {
+  start(onExit?: () => void): void {
+    this.onExit = onExit ?? null;
+    this.running = true;
+    this.hud = new DevHUD(() => this.exit());
     this.injectStyle();
     this.panels = {
       weapon: new WeaponPanel(this),
@@ -61,12 +67,39 @@ export class DevRange implements DevApp {
     this.mountTab(this.activeTab);
 
     // ゲーム画面クリックで視点ロック（FPS/Free のみ。Orbit はドラッグ操作のため除外）。
-    this.ctx.renderer.domElement.addEventListener("click", () => {
+    this.canvasClick = () => {
       if (this.cameraMode !== "orbit") this.ctx.input.requestLock();
-    });
+    };
+    this.ctx.renderer.domElement.addEventListener("click", this.canvasClick);
 
     this.clock.start();
     this.loop();
+  }
+
+  // 終了：後始末してメニューへ戻すコールバックを呼ぶ。
+  exit(): void {
+    this.stop();
+    if (this.onExit) this.onExit();
+  }
+
+  // 後始末：ループ停止・DOM撤去・的削除・トグル/フック/カメラを通常状態へ戻す。
+  stop(): void {
+    this.running = false;
+    (this.panels.targets as TargetsPanel).dispose(); // 的削除＋命中フック解除
+    (this.panels.weapon as WeaponPanel).resetAll(); // 武器スペックを既定へ復帰
+    this.ctx.player.setFlyMode(false);
+    this.ctx.health.setInvincible(false);
+    this.ctx.input.setAdsActive(false);
+    this.devCamera.setMode("fps"); // orbit リスナを外し FPS へ
+    if (this.canvasClick) {
+      this.ctx.renderer.domElement.removeEventListener("click", this.canvasClick);
+      this.canvasClick = null;
+    }
+    if (this.panelRoot) {
+      this.panelRoot.remove();
+      this.panelRoot = null;
+    }
+    this.hud.dispose();
   }
 
   // ===== DevApp =====
@@ -86,6 +119,7 @@ export class DevRange implements DevApp {
 
   // ===== 独自レンダーループ =====
   private loop = (): void => {
+    if (!this.running) return; // stop() で停止
     requestAnimationFrame(this.loop);
 
     let dt = this.clock.getDelta();
@@ -153,6 +187,7 @@ export class DevRange implements DevApp {
     root.appendChild(content);
     document.body.appendChild(root);
 
+    this.panelRoot = root;
     this.content = content;
   }
 
@@ -220,7 +255,9 @@ export class DevRange implements DevApp {
   }
 
   private injectStyle(): void {
+    if (document.getElementById("dev-range-style")) return; // 再入場時の二重注入を防ぐ
     const style = document.createElement("style");
+    style.id = "dev-range-style";
     style.textContent = `
       #dev-range{position:fixed;left:0;right:0;bottom:0;z-index:9999;
         font-family:system-ui,-apple-system,sans-serif;color:#e8eaed;

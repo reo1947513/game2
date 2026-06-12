@@ -806,10 +806,17 @@ export class TouchControls {
     this.updateReviveVis();
   }
 
-  // 蘇生ボタンはコープ時のみ表示する（編集中は配置できるよう常に表示）。
+  // インタラクト（E）ボタン。コープ＝蘇生／ルーフトップ＝ジップライン乗降で表示する
+  // （編集中は配置できるよう常に表示）。ボタンは revive と同一要素を流用し、ラベルだけ切替える。
   private reviveWanted = false;
   setReviveVisible(v: boolean): void {
+    this.setInteractVisible(v, "蘇生");
+  }
+  // 表示とラベルを同時に切替える（label は "蘇生" / "ジップ" など）。
+  setInteractVisible(v: boolean, label: string): void {
     this.reviveWanted = v;
+    const b = this.btnMap["revive"];
+    if (b) b.textContent = label;
     this.updateReviveVis();
   }
   private updateReviveVis(): void {

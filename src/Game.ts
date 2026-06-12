@@ -474,8 +474,10 @@ export class Game {
       // ルーフトップでも近接（ナイフ／キック）は有効
       this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
     }
-    // タッチ端末では蘇生ボタンをコープ時のみ表示する
-    this.touch.setReviveVisible(mode === "coop");
+    // タッチ端末のインタラクト(E)ボタン：コープ＝蘇生／ルーフトップ＝ジップライン乗降で表示する
+    if (mode === "coop") this.touch.setInteractVisible(true, "蘇生");
+    else if (mode === "rooftop" || mode === "rooftop_sv") this.touch.setInteractVisible(true, "ジップ");
+    else this.touch.setInteractVisible(false, "蘇生");
 
     this.online = true;
     this.paused = false;

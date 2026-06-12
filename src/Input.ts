@@ -259,7 +259,18 @@ export class Input {
     return false;
   }
 
+  // 入力欄（ルームコード等）にフォーカスがあるかを判定する。
+  // これが true のときはゲーム操作を一切処理せず、文字入力をブラウザに委ねる。
+  private isEditableTarget(e: KeyboardEvent): boolean {
+    const t = e.target as HTMLElement | null;
+    if (!t) return false;
+    const tag = t.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable === true;
+  }
+
   private onKeyDown = (e: KeyboardEvent): void => {
+    // 入力欄にフォーカス中はゲーム側でキーを横取りしない（W/A/S/D・スペースの文字入力を妨げない）。
+    if (this.isEditableTarget(e)) return;
     const code = e.code;
     const m = this.map;
     if (!this.keys.has(code)) {

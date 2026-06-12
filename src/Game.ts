@@ -33,6 +33,7 @@ import { RemoteEnemy } from "./online/RemoteEnemy";
 import { TeamHUD } from "./ui/TeamHUD";
 import { CoopHUD } from "./ui/CoopHUD";
 import { RooftopHUD } from "./ui/RooftopHUD";
+import { SettingsUI } from "./ui/SettingsUI";
 import { InputState, WeaponKind } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
@@ -48,6 +49,7 @@ export class Game {
   private camera: THREE.PerspectiveCamera;
 
   private input: Input;
+  private settings!: SettingsUI;
   private stage: Stage;
   private player: PlayerController;
   private weapons: WeaponSystem;
@@ -139,6 +141,7 @@ export class Game {
 
     // 入力（ポインタロックの対象はcanvas）
     this.input = new Input(this.renderer.domElement);
+    this.settings = new SettingsUI(this.input);
 
     // ステージ・プレイヤー・武器・HUD
     this.stage = new Stage(this.scene);
@@ -280,6 +283,7 @@ export class Game {
       onDifficulty: (did: string) => {
         this.selectedDifficulty = did === "hard" ? "hard" : "normal";
       },
+      onSettings: () => this.settings.open(),
     });
   }
 
@@ -1008,6 +1012,12 @@ export class Game {
       "padding:12px 34px;font-size:17px;font-weight:800;color:#1a1a1a;background:#ffd27a;border:none;border-radius:10px;cursor:pointer;";
     resume.onclick = () => this.resumeFromPause();
 
+    const settingsBtn = document.createElement("button");
+    settingsBtn.textContent = "設定";
+    settingsBtn.style.cssText =
+      "padding:10px 28px;font-size:14px;font-weight:800;color:#eee;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.25);border-radius:10px;cursor:pointer;";
+    settingsBtn.onclick = () => this.settings.open();
+
     const toMenu = document.createElement("button");
     toMenu.textContent = "メニューに戻る";
     toMenu.style.cssText =
@@ -1020,6 +1030,7 @@ export class Game {
     ov.appendChild(title);
     ov.appendChild(hint);
     ov.appendChild(resume);
+    ov.appendChild(settingsBtn);
     ov.appendChild(toMenu);
     document.body.appendChild(ov);
     return ov;
@@ -1088,6 +1099,7 @@ export class Game {
     // スナイパー息継ぎ：スコープADS中、照準をゆっくり楕円に揺らす（周期3秒、世界が揺れるので実弾もブレる）。
     // 止息（Shift）を押している間2秒までは揺れが1/3に収束し、2秒を超えると息切れで元に戻る。
     const scopeAds = this.weapons.getScopeAds();
+    this.input.setAdsActive(scopeAds > 0.5); // スコープ中はADS感度に切替
     if (scopeAds > 0.5) {
       this.swayPhase += dt;
       if (inputState.sprint) this.holdBreathTime += dt;

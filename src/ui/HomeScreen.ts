@@ -26,6 +26,7 @@ export interface HomeOptions {
   difficulties: HomeDiff[];
   selectedDifficulty: string;
   onDifficulty: (id: string) => void;
+  onSettings: () => void;
 }
 
 // モードidに対応するアイコン（24x24・線画）。未知のidには汎用アイコンを返す。
@@ -534,6 +535,11 @@ export class HomeScreen {
     play?.addEventListener("click", () => {
       if (this.selectedModeId) o.onPlay(this.selectedModeId);
     });
+
+    // 設定（歯車）→ 設定画面を開く
+    this.root
+      .querySelector<HTMLElement>("[data-settings]")
+      ?.addEventListener("click", () => o.onSettings());
 
     // オンライン項目 → 既存ロビーを開く
     this.root.querySelectorAll<HTMLElement>("[data-online]").forEach((el) => {

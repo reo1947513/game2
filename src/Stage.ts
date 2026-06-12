@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { buildSkyframe } from "./stages/Skyframe";
+import { buildSkylineFive } from "./stages/SkylineFive";
 
 // 撃てる的（ターゲット）1体分の情報
 export interface Target {
@@ -35,12 +36,13 @@ export interface StageContext {
 }
 
 // 登録されているステージのID
-export type StageId = "dusk" | "skyframe";
+export type StageId = "dusk" | "skyframe" | "skyline";
 
 // メニューに並べるステージ一覧（今後ステージを足すときはここに登録する）。
 export const STAGE_LIST: Array<{ id: StageId; label: string }> = [
   { id: "skyframe", label: "SKYFRAME — 建設中ビル / 夜間" },
   { id: "dusk", label: "DUSK DISTRICT — 市街 / 夕暮れ" },
+  { id: "skyline", label: "SKYLINE FIVE — 摩天楼の屋上 / 深夜" },
 ];
 
 // 破棄対象のメッシュ群のジオメトリ・マテリアルを解放する。
@@ -90,6 +92,9 @@ export class Stage {
     if (stageId === "dusk") {
       this.buildDusk();
       this.playerSpawn.set(0, 0, 8);
+    } else if (stageId === "skyline") {
+      const spawn = buildSkylineFive(this.makeContext());
+      this.playerSpawn.copy(spawn);
     } else {
       const spawn = buildSkyframe(this.makeContext());
       this.playerSpawn.copy(spawn);

@@ -81,6 +81,8 @@ export class Game {
   private coopResultShown = false; // コープのリザルトを表示済みか
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
+  private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
+
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
   // 結果表示などで意図的にロックを外したときに、メニューを開かないようにする目印
@@ -171,7 +173,7 @@ export class Game {
       sound: this.sound,
     };
 
-    // Escなどでポインタロックが外れたら、プレイ中ならモード選択に戻す
+    // Esc（ポインタロック解除）でプレイ中なら一時停止メニューを出す（PCのみ）
     document.addEventListener("pointerlockchange", () => {
       if (
         document.pointerLockElement === null &&
@@ -179,7 +181,7 @@ export class Game {
         !this.suppressUnlockMenu &&
         !TouchControls.isTouchDevice()
       ) {
-        this.showMenu();
+        this.showPauseMenu();
       }
     });
 
@@ -211,6 +213,7 @@ export class Game {
 
   // ホーム画面（SKYFRAMEロビー）を表示する（プレイは一時停止）
   private showMenu(): void {
+    this.hidePauseOverlay();
     this.screen = "menu";
     this.paused = true;
     this.melee.cancel();
@@ -681,6 +684,64 @@ export class Game {
   // 一時停止の切り替え（タッチのポーズメニューから呼ばれる）
   setPaused(paused: boolean): void {
     this.paused = paused;
+  }
+
+  // ===== PC版 Esc の一時停止メニュー =====
+  // Escでポインタロックが外れたら、対戦から抜けずにこのメニューを出す。
+  private showPauseMenu(): void {
+    this.paused = true;
+    this.melee.cancel();
+    if (!this.pauseOverlay) this.pauseOverlay = this.buildPauseOverlay();
+    this.pauseOverlay.style.display = "flex";
+  }
+
+  // 「再開」：ポインタロックを取り直してゲームに戻る（クリックがユーザー操作なのでロック可能）。
+  private resumeFromPause(): void {
+    this.hidePauseOverlay();
+    this.paused = false;
+    this.input.requestLock();
+  }
+
+  private hidePauseOverlay(): void {
+    if (this.pauseOverlay) this.pauseOverlay.style.display = "none";
+  }
+
+  private buildPauseOverlay(): HTMLElement {
+    const ov = document.createElement("div");
+    ov.id = "pc-pause";
+    ov.style.cssText =
+      "position:fixed;inset:0;z-index:60;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(8,10,14,0.72);font-family:system-ui,sans-serif;";
+
+    const title = document.createElement("div");
+    title.textContent = "一時停止";
+    title.style.cssText =
+      "color:#ffe6b0;font-size:40px;font-weight:900;letter-spacing:0.12em;text-shadow:0 2px 10px rgba(0,0,0,0.9);";
+
+    const hint = document.createElement("div");
+    hint.textContent = "「再開」でゲームに戻ります（オンライン対戦は進行したままです）";
+    hint.style.cssText = "color:#c9d2dc;font-size:13px;";
+
+    const resume = document.createElement("button");
+    resume.textContent = "再開";
+    resume.style.cssText =
+      "padding:12px 34px;font-size:17px;font-weight:800;color:#1a1a1a;background:#ffd27a;border:none;border-radius:10px;cursor:pointer;";
+    resume.onclick = () => this.resumeFromPause();
+
+    const toMenu = document.createElement("button");
+    toMenu.textContent = "メニューに戻る";
+    toMenu.style.cssText =
+      "padding:10px 28px;font-size:14px;font-weight:800;color:#eee;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.25);border-radius:10px;cursor:pointer;";
+    toMenu.onclick = () => {
+      this.hidePauseOverlay();
+      this.showMenu();
+    };
+
+    ov.appendChild(title);
+    ov.appendChild(hint);
+    ov.appendChild(resume);
+    ov.appendChild(toMenu);
+    document.body.appendChild(ov);
+    return ov;
   }
 
   private onResize = (): void => {

@@ -478,6 +478,10 @@ export class Game {
     if (mode === "coop") this.touch.setInteractVisible(true, "蘇生");
     else if (mode === "rooftop" || mode === "rooftop_sv") this.touch.setInteractVisible(true, "ジップ");
     else this.touch.setInteractVisible(false, "蘇生");
+    // 止息はルーフトップのみ、スコアボードはTDM/ルーフトップで表示（PC操作との親和性）
+    const rooftopMode = mode === "rooftop" || mode === "rooftop_sv";
+    this.touch.setHoldBreathVisible(rooftopMode);
+    this.touch.setScoreboardVisible(rooftopMode || mode === "tdm");
 
     this.online = true;
     this.paused = false;
@@ -921,6 +925,8 @@ export class Game {
     this.spectatingTarget = null;
     this.clearRooftopFx();
     this.touch.setReviveVisible(false);
+    this.touch.setHoldBreathVisible(false);
+    this.touch.setScoreboardVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();
     for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);

@@ -69,6 +69,10 @@ const ACTIONS: ActionDef[] = [
   { key: "flash", label: "閃光弾", type: "tap" },
   // 蘇生（コープ専用、長押し）。既定は非表示で、コープ開始時に表示する。
   { key: "revive", label: "蘇生", type: "hold" },
+  // 止息（ルーフトップのスナイパー：ADS中の息こらえ。押している間スプリント入力＝揺れ1/3）。既定非表示。
+  { key: "holdbreath", label: "止息", type: "hold" },
+  // スコアボード（TDM/ルーフトップ：押している間スコア表示）。既定非表示。
+  { key: "scoreboard", label: "スコア", type: "hold" },
 ];
 
 // サイズ編集の見出しに使う、要素ごとの表示名
@@ -86,6 +90,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   grenade: "手榴弾",
   flash: "閃光弾",
   revive: "蘇生",
+  holdbreath: "止息",
+  scoreboard: "スコア",
 };
 
 // 既定の配置（画面に対する%。FPSは横画面前提で右手側に射撃系を寄せています）
@@ -106,6 +112,8 @@ const DEFAULT_LAYOUT: Layout = {
     grenade: { x: 73, y: 28 },
     flash: { x: 64, y: 40 },
     revive: { x: 50, y: 60 },
+    holdbreath: { x: 66, y: 48 },
+    scoreboard: { x: 8, y: 12 },
   },
   scales: {},
 };
@@ -569,6 +577,8 @@ export class TouchControls {
           this.holdId[def.key] = e.pointerId;
           if (def.key === "grenade") this.input.setGrenadeHeld(true);
           else if (def.key === "revive") this.input.setTouchRevive(true);
+          else if (def.key === "holdbreath") this.input.setTouchHold("sprint", true);
+          else if (def.key === "scoreboard") this.input.setTouchScoreboard(true);
           else this.input.setTouchHold(def.key as HoldKey, true);
           b.classList.add("active");
         }
@@ -582,6 +592,8 @@ export class TouchControls {
           this.holdId[def.key] = null;
           if (def.key === "grenade") this.input.setGrenadeHeld(false);
           else if (def.key === "revive") this.input.setTouchRevive(false);
+          else if (def.key === "holdbreath") this.input.setTouchHold("sprint", false);
+          else if (def.key === "scoreboard") this.input.setTouchScoreboard(false);
           else this.input.setTouchHold(def.key as HoldKey, false);
           b.classList.remove("active");
         }
@@ -803,7 +815,7 @@ export class TouchControls {
     this.sizeSlider.value = String(this.layout.size);
     this.opacitySlider.value = String(Math.round(this.layout.opacity * 100));
 
-    this.updateReviveVis();
+    this.updateOptionalVis();
   }
 
   // インタラクト（E）ボタン。コープ＝蘇生／ルーフトップ＝ジップライン乗降で表示する
@@ -817,12 +829,28 @@ export class TouchControls {
     this.reviveWanted = v;
     const b = this.btnMap["revive"];
     if (b) b.textContent = label;
-    this.updateReviveVis();
+    this.updateOptionalVis();
   }
-  private updateReviveVis(): void {
-    const b = this.btnMap["revive"];
-    if (!b) return;
-    b.style.display = this.mode === "edit" || this.reviveWanted ? "" : "none";
+  private holdBreathWanted = false;
+  setHoldBreathVisible(v: boolean): void {
+    this.holdBreathWanted = v;
+    this.updateOptionalVis();
+  }
+  private scoreboardWanted = false;
+  setScoreboardVisible(v: boolean): void {
+    this.scoreboardWanted = v;
+    this.updateOptionalVis();
+  }
+  // 既定非表示のオプションボタン（蘇生/止息/スコア）を、モードに応じて表示する。
+  // 編集中は配置できるよう常に表示する。
+  private updateOptionalVis(): void {
+    const apply = (key: string, wanted: boolean): void => {
+      const b = this.btnMap[key];
+      if (b) b.style.display = this.mode === "edit" || wanted ? "" : "none";
+    };
+    apply("revive", this.reviveWanted);
+    apply("holdbreath", this.holdBreathWanted);
+    apply("scoreboard", this.scoreboardWanted);
   }
 
   private placeEl(elm: HTMLElement, p: Vec2): void {

@@ -34,7 +34,8 @@ export class Input {
   private touchAiming = false;
   private touchSprint = false;
   private touchCrouch = false;
-  private touchRevive = false; // 蘇生ボタン（コープ）押下中
+  private touchRevive = false; // 蘇生ボタン（コープ）/ ジップライン乗降（ルーフトップ）押下中
+  private touchScoreboard = false; // スコアボードボタン押下中
   private touchSensitivity = 0.004;
 
   constructor(private canvas: HTMLElement) {
@@ -162,6 +163,10 @@ export class Input {
     this.touchRevive = pressed;
   }
 
+  setTouchScoreboard(pressed: boolean): void {
+    this.touchScoreboard = pressed;
+  }
+
   setTouchHold(action: "fire" | "ads" | "sprint" | "crouch", pressed: boolean): void {
     if (action === "fire") this.touchFiring = pressed;
     else if (action === "ads") this.touchAiming = pressed;
@@ -230,7 +235,7 @@ export class Input {
       fragReleased: this.fragReleasedQueued,
       flashThrow: this.flashQueued,
       interactHeld: this.keys.has("KeyE") || this.touchRevive,
-      scoreboardHeld: this.keys.has("Tab"),
+      scoreboardHeld: this.keys.has("Tab") || this.touchScoreboard,
       yaw: this.yaw,
       pitch: this.pitch,
     };

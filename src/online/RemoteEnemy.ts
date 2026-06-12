@@ -3,10 +3,27 @@ import { ServerEnemyState, EnemyType } from "./netTypes";
 
 // サーバー権威で動く敵を、クライアント側で描画するゴースト。
 // 物理・AIはサーバーが計算し、こちらは受け取った座標へ滑らかに寄せて置くだけ。
+//
+// grunt/fast/boss は既存コープ用。standard〜summoner はタワーの雑魚5種、boss_* は
+// タワーのボス5種（寸法・色はオフライン版 TowerMode の見た目に合わせている）。
+// タワーの fast はコープと同じ種別を共用するため、見た目もコープの fast（琥珀色）を流用する。
 const DIMS: Record<EnemyType, { r: number; h: number; color: number; emissive: number }> = {
+  // 既存コープ
   grunt: { r: 0.45, h: 1.8, color: 0xb83a3a, emissive: 0x5a1010 },
   fast: { r: 0.4, h: 1.7, color: 0xe0a020, emissive: 0x5a3c00 },
   boss: { r: 0.9, h: 2.6, color: 0x8a3ad0, emissive: 0x35105a },
+  // タワー雑魚5種
+  standard: { r: 0.45, h: 1.8, color: 0xff6a00, emissive: 0x4a1f00 },
+  tank: { r: 0.8, h: 1.6, color: 0x6688aa, emissive: 0x1d2733 },
+  ranged: { r: 0.45, h: 1.7, color: 0x9a6ad0, emissive: 0x281a3a },
+  exploder: { r: 0.45, h: 0.9, color: 0xff6600, emissive: 0x5a2400 },
+  summoner: { r: 0.55, h: 2.0, color: 0xcc44cc, emissive: 0x3a1230 },
+  // タワーボス5種
+  boss_crusher: { r: 1.2, h: 2.5, color: 0x6f93b8, emissive: 0x223044 },
+  boss_phantom: { r: 0.3, h: 1.6, color: 0xeeeeff, emissive: 0x6a6a88 },
+  boss_warlord: { r: 0.8, h: 2.2, color: 0xff5522, emissive: 0x6a1a00 },
+  boss_hivemind: { r: 1.0, h: 2.0, color: 0xaa44ff, emissive: 0x36004f },
+  boss_siege: { r: 1.5, h: 3.0, color: 0x4466ff, emissive: 0x111122 },
 };
 
 export class RemoteEnemy {

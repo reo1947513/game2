@@ -68,6 +68,10 @@ export class WeaponSystem {
   // 動く敵に当たったとき呼ばれる。obj は当たった敵、damage は武器の威力。
   enemyHitHook: ((obj: THREE.Object3D, damage: number) => void) | null = null;
 
+  // オンライン時：発砲のたびに撃ったレイ（起点・方向・威力）を渡す。
+  // 設定されているとサーバー権威の命中判定へ送られる（ローカルの的判定はそのまま）。
+  onShot: ((origin: THREE.Vector3, dir: THREE.Vector3, damage: number) => void) | null = null;
+
   constructor(
     private camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
@@ -481,6 +485,9 @@ export class WeaponSystem {
     this.camera.getWorldDirection(baseDir);
     const origin = new THREE.Vector3();
     this.camera.getWorldPosition(origin);
+
+    // オンライン：撃ったレイをサーバーの命中判定へ送る（拡散前の照準方向）。
+    if (this.onShot) this.onShot(origin, baseDir, w.spec.damage);
 
     const moveFactor = Math.min(1, playerSpeed / this.SPEED_REF);
     const baseSpread = input.aiming ? w.spec.adsSpread : w.spec.hipSpread;

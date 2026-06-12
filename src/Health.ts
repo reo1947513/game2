@@ -50,6 +50,12 @@ export class Health {
     this.update();
   }
 
+  // 現在値を直接セットする（オンラインのサーバー権威HPを反映する用）。
+  set(value: number): void {
+    this.current = Math.max(0, Math.min(this.max, value));
+    this.update();
+  }
+
   isDead(): boolean {
     return this.current <= 0;
   }

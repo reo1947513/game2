@@ -192,6 +192,63 @@ export class GrenadeSystem {
     this.previewRing.visible = false;
   }
 
+  // ===== オンライン（フェーズ2）：弾道・命中はサーバー権威。ここは送信用の値計算と演出のみ。 =====
+
+  // 投擲のスポーン位置と初速を求めて返す（サーバーへ送る用）。ローカル弾は生成しない。
+  computeThrow(): { origin: THREE.Vector3; velocity: THREE.Vector3 } {
+    const origin = new THREE.Vector3();
+    const velocity = new THREE.Vector3();
+    this.aimThrow(origin, velocity);
+    return { origin, velocity };
+  }
+
+  // サーバーの GRENADE_EXPLODE を受けて、フラグの爆発演出を再生する。
+  // 自機の吹き飛ばし（グレネードジャンプ）はローカル移動なのでここで適用。HPはサーバー権威。
+  explodeFragAt(x: number, y: number, z: number): void {
+    this.sound.playExplosion();
+    this.explosionFx.spawnFrag(x, y, z);
+    const pcx = this.player.position.x;
+    const pcy = this.player.position.y + 1.0;
+    const pcz = this.player.position.z;
+    const pd = Math.hypot(pcx - x, pcy - y, pcz - z);
+    if (pd <= this.FRAG_RADIUS) {
+      const falloff = 1 - pd / this.FRAG_RADIUS;
+      let dx = pcx - x;
+      let dz = pcz - z;
+      let hl = Math.hypot(dx, dz);
+      if (hl < 0.0001) {
+        dx = 0;
+        dz = 1;
+        hl = 1;
+      }
+      const nx = dx / hl;
+      const nz = dz / hl;
+      this.player.applyExplosionImpulse(nx * (16 * falloff + 4), 9 * falloff + 3, nz * (16 * falloff + 4));
+      this.melee.addShake(0.05 * falloff + 0.02);
+    }
+    if (pd <= this.FRAG_RADIUS * 2.2) this.melee.addShake(0.015);
+  }
+
+  // サーバーの FLASHBANG_EXPLODE を受けて、視線方向と距離からホワイトアウト量を独立計算する。
+  explodeFlashAt(x: number, y: number, z: number): void {
+    this.sound.playFlashbang();
+    this.explosionFx.spawnFlash(x, y, z);
+    this.camera.getWorldPosition(this.camPos);
+    this.camera.getWorldDirection(this.camDir);
+    const d = Math.hypot(this.camPos.x - x, this.camPos.y - y, this.camPos.z - z);
+    if (d <= this.FLASH_RADIUS) {
+      const base = 1 - d / this.FLASH_RADIUS;
+      const tx = x - this.camPos.x;
+      const ty = y - this.camPos.y;
+      const tz = z - this.camPos.z;
+      const tl = Math.hypot(tx, ty, tz) || 1;
+      const dot = (tx / tl) * this.camDir.x + (ty / tl) * this.camDir.y + (tz / tl) * this.camDir.z;
+      const facing = THREE.MathUtils.clamp((dot + 0.2) / 1.2, 0.15, 1);
+      const amt = Math.min(1, base * (0.4 + 0.9 * facing) * 1.7);
+      this.overlay.trigger(amt);
+    }
+  }
+
   private tryThrow(type: GrenadeType): void {
     if (this.throwCd > 0) return;
     const ammo = type === "frag" ? this.fragAmmo : this.flashAmmo;

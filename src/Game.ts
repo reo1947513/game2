@@ -13,7 +13,10 @@ import { Health } from "./Health";
 import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
-import { PlayerState, WorldState } from "./online/netTypes";
+import { PlayerState, WorldState, GameEvent } from "./online/netTypes";
+import { ClientPredictor } from "./online/ClientPredictor";
+import { RemoteProjectile } from "./online/RemoteProjectile";
+import { InputState } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
 import { KickViewmodel } from "./combat/KickViewmodel";
@@ -60,6 +63,10 @@ export class Game {
   private remotePlayers = new Map<string, RemotePlayer>();
   private online = false; // オンラインセッション中か
   private onlineWired = false; // ネットワークイベントを結線済みか
+  private predictor = new ClientPredictor(); // 入力seq管理（将来の移動予測の土台）
+  private remoteProjectiles = new Map<string, RemoteProjectile>(); // サーバー権威の弾
+  private onlineSeq = 0; // 直近の入力seq
+  private onlineThrowCd = 0; // オンライン投擲の共通クールダウン
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -327,7 +334,7 @@ export class Game {
       this.lobby.setRoster(players.length, 2, this.network.isHost);
     });
     this.network.on("gameStart", (info) => this.onGameStart(info.stage));
-    this.network.on("worldState", (world) => this.reconcileGhosts(world));
+    this.network.on("worldState", (world) => this.onWorldState(world));
     this.network.on("playerLeft", (info) => this.removeGhost(info.playerId));
     this.network.on("error", (e) => this.lobby.setError(this.errMessage(e)));
     this.network.on("close", () => {
@@ -355,13 +362,39 @@ export class Game {
     const sp = this.stage.playerSpawn;
     this.player.respawn(sp.x, sp.y, sp.z);
     this.health.reset(100);
+
+    // フェーズ2：戦闘をサーバー権威にする結線
+    this.predictor.reset();
+    this.onlineSeq = 0;
+    this.onlineThrowCd = 0;
+    this.health.show();
+    this.grenades.setEnabled(false); // ローカル投擲は使わずサーバー権威に任せる
+    this.weapons.onShot = (origin, dir, damage) =>
+      this.network.sendShot(
+        { x: origin.x, y: origin.y, z: origin.z },
+        { x: dir.x, y: dir.y, z: dir.z },
+        this.onlineSeq,
+        damage
+      );
+    // ホストはステージの当たり判定をサーバーへ送る（グレネード物理・遮蔽判定用）
+    if (this.network.isHost) {
+      this.network.sendColliders(
+        this.stage.colliders.map((b) => ({
+          min: { x: b.min.x, y: b.min.y, z: b.min.z },
+          max: { x: b.max.x, y: b.max.y, z: b.max.z },
+        }))
+      );
+    }
+    this.network.startPing();
+
     this.online = true;
     this.paused = false;
   }
 
-  // 自分の状態送信＋全ゴーストの補間更新（毎フレーム）。
-  private updateOnline(): void {
+  // 自分の状態送信＋オンライン用グレネード入力＋ゴースト補間（毎フレーム）。
+  private updateOnline(inputState: InputState, dt: number): void {
     const p = this.player;
+    this.onlineSeq = this.predictor.nextSeq();
     const state: PlayerState = {
       playerId: this.network.playerId,
       position: { x: p.position.x, y: p.position.y, z: p.position.z },
@@ -370,16 +403,41 @@ export class Game {
       pitch: this.input.getPitch(),
       hp: this.health.getCurrent(),
       onGround: p.grounded,
+      seq: this.onlineSeq,
     };
     this.network.sendPlayerState(state);
+    this.predictor.record(this.onlineSeq, state.position);
+
+    // グレネード投擲（サーバーが弾道を計算）。共通0.5秒クールダウン。
+    this.onlineThrowCd = Math.max(0, this.onlineThrowCd - dt);
+    if (this.onlineThrowCd <= 0) {
+      let gtype: "frag" | "flash" | null = null;
+      if (inputState.fragReleased) gtype = "frag";
+      else if (inputState.flashThrow) gtype = "flash";
+      if (gtype) {
+        const t = this.grenades.computeThrow();
+        this.network.throwGrenade(
+          gtype,
+          { x: t.origin.x, y: t.origin.y, z: t.origin.z },
+          { x: t.velocity.x, y: t.velocity.y, z: t.velocity.z }
+        );
+        this.weapons.triggerThrowDip();
+        this.onlineThrowCd = 0.5;
+      }
+    }
+
     for (const rp of this.remotePlayers.values()) rp.update(100); // renderDelay 100ms
   }
 
-  // 受信した世界状態でゴーストを作成/更新する。
-  private reconcileGhosts(world: WorldState): void {
+  // 受信した世界状態でゴースト・サーバー弾・HP・イベントを反映する。
+  private onWorldState(world: WorldState): void {
     if (!this.online) return;
+    // プレイヤー（自分のHPはサーバー権威、他はゴースト）
     for (const ps of world.players) {
-      if (ps.playerId === this.network.playerId) continue;
+      if (ps.playerId === this.network.playerId) {
+        this.health.set(ps.hp);
+        continue;
+      }
       let rp = this.remotePlayers.get(ps.playerId);
       if (!rp) {
         rp = new RemotePlayer(ps.playerId);
@@ -387,6 +445,51 @@ export class Game {
         this.scene.add(rp.group);
       }
       rp.receiveState(ps);
+    }
+    // サーバー権威のグレネード弾
+    const seen = new Set<string>();
+    for (const pr of world.projectiles) {
+      seen.add(pr.id);
+      const existing = this.remoteProjectiles.get(pr.id);
+      if (!existing) {
+        const rp = new RemoteProjectile(pr);
+        this.remoteProjectiles.set(pr.id, rp);
+        this.scene.add(rp.group);
+      } else {
+        existing.update(pr);
+      }
+    }
+    for (const id of [...this.remoteProjectiles.keys()]) {
+      if (!seen.has(id)) this.removeProjectile(id);
+    }
+    // 単発イベント（命中・撃破・爆発）
+    for (const ev of world.events) this.applyEvent(ev);
+  }
+
+  private applyEvent(ev: GameEvent): void {
+    const self = this.network.playerId;
+    const p = ev.payload;
+    if (ev.type === "HIT") {
+      if (p.shooterId === self) this.hud.flashHitmarker(); // 自分が当てた → ヒットマーカー
+    } else if (ev.type === "KILL") {
+      if (p.targetId === self) {
+        const sp = this.stage.playerSpawn;
+        this.player.respawn(sp.x, sp.y, sp.z); // 自分が倒された → スポーンへ
+      }
+      if (p.shooterId === self) this.hud.addKillFeed("🎯 ELIMINATED");
+    } else if (ev.type === "GRENADE_EXPLODE") {
+      this.grenades.explodeFragAt(Number(p.x), Number(p.y), Number(p.z));
+    } else if (ev.type === "FLASHBANG_EXPLODE") {
+      this.grenades.explodeFlashAt(Number(p.x), Number(p.y), Number(p.z));
+    }
+  }
+
+  private removeProjectile(id: string): void {
+    const rp = this.remoteProjectiles.get(id);
+    if (rp) {
+      this.scene.remove(rp.group);
+      rp.dispose();
+      this.remoteProjectiles.delete(id);
     }
   }
 
@@ -402,7 +505,11 @@ export class Game {
   // オンラインセッションを抜ける（ゴースト除去・切断）。
   private leaveOnline(): void {
     this.online = false;
+    this.weapons.onShot = null;
+    this.network.stopPing();
     for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);
+    for (const id of [...this.remoteProjectiles.keys()]) this.removeProjectile(id);
+    this.predictor.reset();
     this.network.leaveRoom();
     this.network.disconnect();
   }
@@ -496,17 +603,21 @@ export class Game {
     this.camera.rotation.set(this.input.getPitch(), this.input.getYaw(), 0, "YXZ");
 
     // オンライン中：自分の状態を送信し、他プレイヤーのゴーストを補間更新する
-    if (this.online) this.updateOnline();
+    if (this.online) this.updateOnline(inputState, dt);
 
     // 武器更新（速度連動FOVにランジ状態を反映）
     this.weapons.setMeleeLunging(this.melee.lungeActive());
     this.weapons.update(dt, inputState, this.player.horizontalSpeed, now);
     // グレネード（フラグG／フラッシュC、押した瞬間に投擲）。カメラ確定後に処理する。
     // 戦闘中の死亡→復活の瞬間に、所持・投擲物・ホワイトアウトをリセットする。
-    this.grenades.setProvider(this.ctx.meleeProvider ?? null);
-    if (this.wasDead && !dead) this.grenades.reset();
-    this.wasDead = dead;
-    this.grenades.handleInput(inputState, !dead);
+    // オンライン中はグレネードをサーバー権威で扱うため、ローカルの投擲入力は処理しない
+    // （投擲は updateOnline からサーバーへ送る）。爆発などの演出更新のみ毎フレーム回す。
+    if (!this.online) {
+      this.grenades.setProvider(this.ctx.meleeProvider ?? null);
+      if (this.wasDead && !dead) this.grenades.reset();
+      this.wasDead = dead;
+      this.grenades.handleInput(inputState, !dead);
+    }
     this.grenades.update(dt, this.stage.colliders);
     this.stage.updateTargets(now);
     // 現在のモードの更新（スコア・残り時間・的の動き・終了判定など）

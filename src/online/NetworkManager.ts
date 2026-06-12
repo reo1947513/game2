@@ -5,6 +5,8 @@ import {
   PlayerInfo,
   WorldState,
   ErrorCode,
+  Vec3,
+  Box,
 } from "./netTypes";
 
 // 受け取れるイベントとそのデータ型。
@@ -30,6 +32,9 @@ export class NetworkManager {
   roomCode = "";
   isHost = false;
   players: PlayerInfo[] = [];
+
+  private rtt = 0; // 直近のRTT（ms）
+  private pingTimer: number | null = null;
 
   private createResolve: ((v: { roomCode: string; playerId: string }) => void) | null = null;
   private joinResolve: (() => void) | null = null;
@@ -85,6 +90,43 @@ export class NetworkManager {
 
   sendPlayerState(state: PlayerState): void {
     this.send({ type: "PLAYER_STATE", payload: state });
+  }
+
+  // ===== フェーズ2：戦闘 =====
+  getRtt(): number {
+    return this.rtt;
+  }
+
+  // ステージの当たり判定（ホストが開始時に送る）。
+  sendColliders(colliders: Box[]): void {
+    this.send({ type: "SET_COLLIDERS", payload: { colliders } });
+  }
+
+  // 射撃（サーバー権威の命中判定へ）。rtt はラグ補償に使われる。
+  sendShot(origin: Vec3, direction: Vec3, seq: number, damage: number): void {
+    this.send({ type: "SHOT", payload: { origin, direction, seq, rtt: this.rtt, damage } });
+  }
+
+  // グレネード投擲（サーバーが弾道を計算）。
+  throwGrenade(gtype: "frag" | "flash", origin: Vec3, velocity: Vec3): void {
+    this.send({ type: "THROW_GRENADE", payload: { gtype, origin, velocity } });
+  }
+
+  // 5秒ごとに PING を送って RTT を計測する。
+  startPing(): void {
+    this.stopPing();
+    const ping = () => {
+      if (this.isConnected()) this.send({ type: "PING", payload: { clientTime: performance.now() } });
+    };
+    ping();
+    this.pingTimer = window.setInterval(ping, 5000);
+  }
+
+  stopPing(): void {
+    if (this.pingTimer !== null) {
+      window.clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   leaveRoom(): void {

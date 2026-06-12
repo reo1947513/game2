@@ -3,6 +3,7 @@ import { Input } from "./Input";
 import { Stage, StageId, STAGE_LIST } from "./Stage";
 import { GauntletRun } from "./modes/GauntletRun";
 import { KeepMoving } from "./modes/KeepMoving";
+import { TowerMode } from "./modes/TowerMode";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 import { HUD } from "./HUD";
@@ -153,6 +154,7 @@ export class Game {
       new GauntletRun("fixed"),
       new GauntletRun("free"),
       new KeepMoving(),
+      new TowerMode(),
     ]);
     this.ctx = {
       scene: this.scene,

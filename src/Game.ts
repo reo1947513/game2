@@ -338,6 +338,7 @@ export class Game {
       onClose: () => {
         this.lobby.hide();
         this.network.disconnect();
+        this.showMenu(); // ホーム画面に戻す（素のステージに取り残されるのを防ぐ）
       },
     });
   }

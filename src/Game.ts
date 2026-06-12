@@ -21,7 +21,7 @@ import { RemoteProjectile } from "./online/RemoteProjectile";
 import { RemoteEnemy } from "./online/RemoteEnemy";
 import { TeamHUD } from "./ui/TeamHUD";
 import { CoopHUD } from "./ui/CoopHUD";
-import { InputState } from "./types";
+import { InputState, WeaponKind } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
 import { KickViewmodel } from "./combat/KickViewmodel";
@@ -279,6 +279,7 @@ export class Game {
     this.currentModeId = id;
     this.ctx.difficulty = this.selectedDifficulty;
     this.melee.cancel();
+    this.weapons.unlock(); // オフラインモードでは武器固定を解除（ROOFTOP DUEL対策）
     this.modeManager.start(id, this.ctx, now);
     // ステージのスポーン地点から開始する（SKYFRAMEは南ゲート前）
     const s = this.stage.playerSpawn;
@@ -380,6 +381,9 @@ export class Game {
         ? (stage as StageId)
         : this.selectedStageId;
     this.switchStage(sid);
+    // ROOFTOP DUEL はスナイパー専用。武器を固定する（他オンラインモードでは解除）。
+    if (mode === "rooftop") this.weapons.lockTo(WeaponKind.Sniper);
+    else this.weapons.unlock();
     const sp = this.stage.playerSpawn;
     this.player.respawn(sp.x, sp.y, sp.z);
     this.health.reset(100);

@@ -21,6 +21,7 @@ interface WeaponInstance {
 export class WeaponSystem {
   private weapons = new Map<WeaponKind, WeaponInstance>();
   private current: WeaponKind = WeaponKind.Assault;
+  private locked = false; // 武器固定（ROOFTOP DUEL：スナイパー専用化）。固定中は切替を無効化。
 
   private adsProgress = 0; // 0=腰だめ, 1=覗き込み完了
   private readonly baseFov = 75;
@@ -419,6 +420,7 @@ export class WeaponSystem {
 
   // 指定した武器へ切り替える。数字キーとモバイルのトグルで共通して使う。
   private switchToKind(kind: WeaponKind): void {
+    if (this.locked) return;
     if (kind === this.current) return;
     if (!this.weapons.has(kind)) return;
     this.weapons.get(this.current)!.model.visible = false;
@@ -436,6 +438,18 @@ export class WeaponSystem {
     const i = this.order.indexOf(this.current);
     const next = this.order[(i + 1) % this.order.length];
     this.switchToKind(next);
+  }
+
+  // 指定武器に固定する（ROOFTOP DUEL のスナイパー専用化）。固定中は数字キー・トグル・循環すべて無効。
+  lockTo(kind: WeaponKind): void {
+    this.locked = false;
+    this.switchToKind(kind);
+    this.locked = true;
+  }
+
+  // 武器固定を解除する（他モードへ戻るとき）。
+  unlock(): void {
+    this.locked = false;
   }
 
   private handleReload(input: InputState, now: number): void {

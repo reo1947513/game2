@@ -29,6 +29,11 @@ RUN if [ ! -f src/shared/protocol.ts ]; then \
 ARG VITE_WS_URL=wss://game2-server-production.up.railway.app
 ENV VITE_WS_URL=$VITE_WS_URL
 
+# DEV RANGE 保護付き別デプロイ（案C）用。既定は空＝本番は DevRange を一切含めない。
+# 専用サービスだけ build-arg VITE_DEV_RANGE=true を渡すと、その dist にのみ DevRange が焼き込まれる。
+ARG VITE_DEV_RANGE=
+ENV VITE_DEV_RANGE=$VITE_DEV_RANGE
+
 # tsc --noEmit && vite build → dist/
 RUN npm run build
 

@@ -23,10 +23,27 @@ export interface NetEvents {
 
 type Handler = (data: unknown) => void;
 
+// 端末固定のプレイヤーID（戦績の累積キー）。初回に生成して localStorage に保存する。
+function getPersistentPlayerId(): string {
+  const KEY = "arena_strike_player_id";
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    // localStorage が使えない環境では毎回新規（戦績は累積されないが動作は継続）
+    return crypto.randomUUID();
+  }
+}
+
 // WebSocket 接続とメッセージ送受信を担う。ルーム作成/入室は Promise で返す。
 export class NetworkManager {
   private ws: WebSocket | null = null;
   private handlers: Map<string, Handler[]> = new Map();
+  private statsId = getPersistentPlayerId(); // 端末固定ID
 
   playerId = "";
   roomCode = "";
@@ -53,6 +70,8 @@ export class NetworkManager {
       }
       this.ws = ws;
       ws.onopen = () => {
+        // 接続直後に端末固定IDを通知（戦績の累積キー）
+        this.send({ type: "IDENTIFY", payload: { playerId: this.statsId } });
         this.emit("open", undefined);
         resolve();
       };

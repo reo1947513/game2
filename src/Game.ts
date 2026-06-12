@@ -633,6 +633,15 @@ export class Game {
           team,
           this.killNote(p.killType)
         );
+      } else if (this.onlineMode === "rooftop") {
+        // ルーフトップのキルフィード（ヘッドショット／近接を強調）
+        const tag = p.melee ? "近接" : p.headshot ? "HEADSHOT" : "";
+        this.rooftopHud.addKill(
+          this.playerName(String(p.shooterId)),
+          this.playerName(String(p.targetId)),
+          tag,
+          p.shooterId === self
+        );
       } else if (p.shooterId === self) {
         this.hud.addKillFeed("🎯 ELIMINATED");
       }

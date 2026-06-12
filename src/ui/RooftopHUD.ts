@@ -9,6 +9,7 @@ export class RooftopHUD {
   private info: HTMLElement;
   private result: HTMLElement;
   private resultInner: HTMLElement;
+  private feed: HTMLElement;
 
   constructor() {
     this.root = document.createElement("div");
@@ -32,8 +33,39 @@ export class RooftopHUD {
       "min-width:280px;max-width:90vw;padding:28px 32px;border-radius:14px;background:linear-gradient(160deg,#0e1726,#0a1018);border:1px solid #24405e;color:#eaf3ff;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.6);font-family:'Segoe UI',system-ui,sans-serif;";
     this.result.appendChild(this.resultInner);
 
+    // キルフィード（右側に縦積み）。
+    this.feed = document.createElement("div");
+    this.feed.style.cssText =
+      "position:fixed;top:64px;right:14px;z-index:40;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:none;font-family:'Segoe UI',system-ui,sans-serif;";
+
     document.body.appendChild(this.root);
     document.body.appendChild(this.result);
+    document.body.appendChild(this.feed);
+  }
+
+  // キルフィードに1行追加する（数秒で自動的に消える）。
+  addKill(shooter: string, victim: string, tag: string, mine: boolean): void {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:7px;font-size:13px;color:#eaf3ff;text-shadow:0 1px 2px #000;transition:opacity 0.4s;" +
+      (mine
+        ? "background:rgba(80,150,255,0.32);border:1px solid #6aa8ff;"
+        : "background:rgba(10,18,30,0.72);border:1px solid #24405e;");
+    const tagHtml = tag
+      ? `<span style="color:#ffd27a;font-weight:700;letter-spacing:1px;">${tag}</span>`
+      : "";
+    row.innerHTML =
+      `<span style="color:#9fc8ff;">${escapeHtml(shooter)}</span>` +
+      `<span style="opacity:0.7;">━━●</span>` +
+      `<span style="opacity:0.85;">${escapeHtml(victim)}</span>` +
+      tagHtml;
+    this.feed.appendChild(row);
+    window.setTimeout(() => {
+      row.style.opacity = "0";
+      window.setTimeout(() => row.remove(), 400);
+    }, 3600);
+    // 行が増えすぎないよう古いものから間引く。
+    while (this.feed.childElementCount > 6) this.feed.firstElementChild?.remove();
   }
 
   show(): void {
@@ -44,6 +76,7 @@ export class RooftopHUD {
     this.root.style.display = "none";
     this.result.style.display = "none";
     this.board.innerHTML = "";
+    this.feed.innerHTML = "";
   }
 
   // 上部スコアボードを更新する。

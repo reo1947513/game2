@@ -15,7 +15,15 @@ import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
 import { HomeScreen } from "./ui/HomeScreen";
-import { PlayerState, WorldState, GameEvent, Team, ServerEnemyState, ZiplineState } from "./online/netTypes";
+import {
+  PlayerState,
+  WorldState,
+  GameEvent,
+  Team,
+  ServerEnemyState,
+  ZiplineState,
+  roofSpawnPoints,
+} from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
 import { RemoteEnemy } from "./online/RemoteEnemy";
@@ -85,6 +93,7 @@ export class Game {
   private rooftopZiplines: ZiplineState[] = []; // 直近のジップライン状態（乗降判定用）
   private ziplineRide: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number } | null = null;
   private ePrev = false; // Eキーのエッジ検出用（ジップライン乗降）
+  private rooftopRound = 0; // サバイバルの現在ラウンド（ラウンド切替時の再配置検知用）
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -428,6 +437,7 @@ export class Game {
     this.coopHud.hide();
     this.rooftopHud.hide();
     this.ziplineRide = null;
+    this.rooftopRound = 0;
     this.melee.onSwingHit = null;
     this.player.setSpeedCap(null);
     if (mode === "tdm") {
@@ -457,6 +467,18 @@ export class Game {
   private isRooftop(): boolean {
     const m = this.onlineMode;
     return m === "rooftop" || m === "rooftop_sv";
+  }
+
+  // サバイバルのラウンド切替時、自分を棟の屋上スポーンへ再配置する（IDで棟を分散）。
+  private respawnToRooftopSpawn(): void {
+    const spawns = roofSpawnPoints();
+    if (spawns.length === 0) return;
+    let h = 0;
+    const id = this.network.playerId || "";
+    for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % spawns.length;
+    const s = spawns[h].pos;
+    this.player.respawn(s.x, s.y, s.z);
+    this.ziplineRide = null;
   }
 
   // ROOFTOP DUEL：ジップラインの乗降。滑走中は true を返して通常移動をスキップさせる。
@@ -631,6 +653,12 @@ export class Game {
 
     if (this.isRooftop() && world.rooftop) {
       this.rooftopZiplines = world.rooftop.ziplines;
+      // サバイバル：ラウンドが進んだら自分を屋上スポーンへ再配置する（サーバーは全員HP全快）。
+      if (world.rooftop.rule === "survival" && world.rooftop.round > this.rooftopRound) {
+        const prev = this.rooftopRound;
+        this.rooftopRound = world.rooftop.round;
+        if (prev > 0) this.respawnToRooftopSpawn();
+      }
       this.rooftopHud.update(world.rooftop, this.network.playerId, (id) => this.playerName(id));
       if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
         this.rooftopResultShown = true;
@@ -758,6 +786,7 @@ export class Game {
     this.coopHud.hide();
     this.rooftopHud.hide();
     this.ziplineRide = null;
+    this.rooftopRound = 0;
     this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();

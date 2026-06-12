@@ -693,4 +693,15 @@ export class WeaponSystem {
     this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
+
+  // ===== DEV RANGE 用アクセサ（開発時のみ使用） =====
+  // 現在選択中の武器種を返す。
+  devCurrentKind(): WeaponKind {
+    return this.current;
+  }
+
+  // 指定武器の生スペック参照を返す。フィールドを書き換えると次フレームから挙動へ即反映される。
+  devSpec(kind: WeaponKind): WeaponSpec {
+    return this.weapons.get(kind)!.spec;
+  }
 }

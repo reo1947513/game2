@@ -8,6 +8,8 @@ export class Health {
   private root: HTMLElement;
   private bar: HTMLElement;
   private label: HTMLElement;
+  // 無敵モード（DEV RANGE 用）。既定 false で通常挙動。true の間 damage() を無効化する。
+  private invincible = false;
 
   constructor(max = 100) {
     this.max = max;
@@ -41,8 +43,14 @@ export class Health {
   }
 
   damage(amount: number): void {
+    if (this.invincible) return; // DEV RANGE 無敵モード中はダメージを無効化
     this.current = Math.max(0, this.current - amount);
     this.update();
+  }
+
+  // 無敵モードの切替（DEV RANGE 用）。
+  setInvincible(on: boolean): void {
+    this.invincible = on;
   }
 
   heal(amount: number): void {

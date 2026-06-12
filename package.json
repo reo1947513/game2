@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:range": "VITE_DEV_RANGE=1 vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "start": "node server.js"

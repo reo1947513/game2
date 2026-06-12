@@ -45,6 +45,12 @@ export class PlayerController {
   // 移動速度の上限（コープのダウン中=1.5、死亡=0 など）。nullで無制限。
   private speedCap: number | null = null;
 
+  // 飛行モード（DEV RANGE 用）。既定 false で通常挙動。
+  // true の間は重力・当たり判定を無視し、視線方向へ自由移動する。
+  private flyMode = false;
+  private readonly FLY_SPEED = 9.0;
+  private readonly FLY_SPRINT = 22.0;
+
   // ----- 速度定数（m/s） -----
   private readonly SPEED_WALK = 5.0;
   private readonly SPEED_SPRINT = 8.5;
@@ -192,12 +198,47 @@ export class PlayerController {
 
   // メイン更新。dt=前フレームからの経過秒、input=入力
   update(dt: number, input: InputState): void {
+    // 飛行モード（DEV RANGE 用）：重力・当たり判定・姿勢処理をすべて飛ばす。
+    // 既定 false のため通常プレイでは一切通らない。
+    if (this.flyMode) {
+      this.updateFly(dt, input);
+      return;
+    }
     this.decideStance(input, dt);
     this.applyHorizontal(dt, input);
     this.applyVerticalAndJump(input, dt);
     this.integrate(dt);
     // 目線の高さを滑らかに追従させる
     this.currentEye += (this.targetEye - this.currentEye) * Math.min(1, dt * 12);
+    this.prevCrouch = input.crouch;
+  }
+
+  // 飛行モードの切替（DEV RANGE 用）。ON時は落下速度を打ち消す。
+  setFlyMode(on: boolean): void {
+    this.flyMode = on;
+    if (on) this.velocity.set(0, 0, 0);
+  }
+
+  // 飛行モードの移動。視線方向（pitch込み）へ自由に飛び、しゃがみで真下へ降りる。
+  // 重力・当たり判定は無視する（ステージ全体の確認用）。
+  private updateFly(dt: number, input: InputState): void {
+    this.stance = Stance.Stand;
+    this.grounded = false;
+    const speed = input.sprint ? this.FLY_SPRINT : this.FLY_SPEED;
+    const yaw = input.yaw;
+    const pitch = input.pitch;
+    const cp = Math.cos(pitch);
+    // 前方ベクトルは pitch を含める（見上げて前進すると上昇する）
+    const fwd = new THREE.Vector3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
+    const rgt = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const move = new THREE.Vector3();
+    move.addScaledVector(fwd, input.forward);
+    move.addScaledVector(rgt, input.right);
+    if (input.crouch) move.y -= 1; // しゃがみで真下へ
+    if (move.lengthSq() > 0) move.normalize();
+    this.velocity.set(move.x * speed, move.y * speed, move.z * speed);
+    this.position.addScaledVector(this.velocity, dt);
+    this.currentEye += (this.EYE_STAND - this.currentEye) * Math.min(1, dt * 12);
     this.prevCrouch = input.crouch;
   }
 

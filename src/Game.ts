@@ -237,6 +237,24 @@ export class Game {
     this.showMenu();
   }
 
+  // ===== DEV RANGE 用アクセサ（開発時のみ使用。本番ビルドからは呼ばれない） =====
+  // 開発者テストレンジ DevRange が内部システムを直接操作するために必要な参照だけを返す。
+  // 追加のみの無害なメソッドで、通常プレイの挙動には一切関与しない。
+  devContext() {
+    return {
+      renderer: this.renderer,
+      scene: this.scene,
+      camera: this.camera,
+      input: this.input,
+      stage: this.stage,
+      player: this.player,
+      weapons: this.weapons,
+      hud: this.hud,
+      sound: this.sound,
+      health: this.health,
+    };
+  }
+
   // ループを動かし始める（最初の1回だけ）
   private ensureLoop(): void {
     if (!this.running) {

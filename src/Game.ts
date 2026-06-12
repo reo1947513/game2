@@ -311,7 +311,11 @@ export class Game {
         this.ensureConnected(url)
           .then(() =>
             this.network
-              .createRoom(maxPlayers, mode, mode === "rooftop" ? "skyline" : this.selectedStageId)
+              .createRoom(
+                maxPlayers,
+                mode,
+                mode === "rooftop" || mode === "rooftop_sv" ? "skyline" : this.selectedStageId
+              )
               .then(({ roomCode }) => {
                 this.lobby.setCode(roomCode);
                 this.lobby.setRoster(
@@ -389,7 +393,7 @@ export class Game {
         : this.selectedStageId;
     this.switchStage(sid);
     // ROOFTOP DUEL はスナイパー専用。武器を固定する（他オンラインモードでは解除）。
-    if (mode === "rooftop") this.weapons.lockTo(WeaponKind.Sniper);
+    if (mode === "rooftop" || mode === "rooftop_sv") this.weapons.lockTo(WeaponKind.Sniper);
     else this.weapons.unlock();
     const sp = this.stage.playerSpawn;
     this.player.respawn(sp.x, sp.y, sp.z);
@@ -435,7 +439,7 @@ export class Game {
       this.coopHud.show();
       // コープでも近接は敵に当たる
       this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
-    } else if (mode === "rooftop") {
+    } else if (mode === "rooftop" || mode === "rooftop_sv") {
       this.rooftopResultShown = false;
       this.rooftopHud.show();
       // ルーフトップでも近接（ナイフ／キック）は有効
@@ -449,11 +453,17 @@ export class Game {
   }
 
   // 自分の状態送信＋オンライン用グレネード入力＋ゴースト補間（毎フレーム）。
+  // ROOFTOP DUEL 系（デスマッチ／サバイバル）かどうか。
+  private isRooftop(): boolean {
+    const m = this.onlineMode;
+    return m === "rooftop" || m === "rooftop_sv";
+  }
+
   // ROOFTOP DUEL：ジップラインの乗降。滑走中は true を返して通常移動をスキップさせる。
   // サーバーへ承認要求（useZipline）を送りつつ、クライアントがワイヤ上を滑走する。
   // 起点付近で[E]→滑走開始、滑走中に[E]→途中離脱（落下）、終点到達で自動降車。
   private updateZiplineRide(dt: number, input: InputState): boolean {
-    if (this.onlineMode !== "rooftop") return false;
+    if (!this.isRooftop()) return false;
     const ePress = input.interactHeld && !this.ePrev;
     this.ePrev = input.interactHeld;
 
@@ -619,7 +629,7 @@ export class Game {
       }
     }
 
-    if (this.onlineMode === "rooftop" && world.rooftop) {
+    if (this.isRooftop() && world.rooftop) {
       this.rooftopZiplines = world.rooftop.ziplines;
       this.rooftopHud.update(world.rooftop, this.network.playerId, (id) => this.playerName(id));
       if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
@@ -696,7 +706,7 @@ export class Game {
           team,
           this.killNote(p.killType)
         );
-      } else if (this.onlineMode === "rooftop") {
+      } else if (this.isRooftop()) {
         // ルーフトップのキルフィード（ヘッドショット／近接を強調）
         const tag = p.melee ? "近接" : p.headshot ? "HEADSHOT" : "";
         this.rooftopHud.addKill(

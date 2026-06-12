@@ -98,7 +98,10 @@ export class RooftopHUD {
 
   // 上部スコアボードを更新する。
   update(rooftop: RooftopShared, selfId: string, nameOf: (id: string) => string): void {
-    const sorted = [...rooftop.players].sort((a, b) => b.kills - a.kills || b.score - a.score);
+    const surv = rooftop.rule === "survival";
+    const sorted = [...rooftop.players].sort((a, b) =>
+      surv ? b.roundWins - a.roundWins || b.kills - a.kills : b.kills - a.kills || b.score - a.score
+    );
     this.board.innerHTML = "";
     for (const p of sorted) {
       const me = p.playerId === selfId;
@@ -114,14 +117,24 @@ export class RooftopHUD {
       nm.textContent = me ? "あなた" : nameOf(p.playerId);
       const k = document.createElement("span");
       k.style.cssText = "font-weight:700;color:" + (me ? "#fff" : "#ffd27a") + ";";
-      k.textContent = String(p.kills);
+      k.textContent = String(surv ? p.roundWins : p.kills);
       chip.appendChild(nm);
       chip.appendChild(k);
       this.board.appendChild(chip);
     }
     const mm = Math.floor(rooftop.timeRemaining / 60);
     const ss = String(rooftop.timeRemaining % 60).padStart(2, "0");
-    this.info.textContent = `ROOFTOP DUEL  残り ${mm}:${ss}  /  キル上限 ${rooftop.killLimit}`;
+    if (surv) {
+      const aliveN = rooftop.players.filter((p) => p.isAlive).length;
+      const danger = rooftop.dangerZones.length
+        ? `　⚠危険ゾーン: ${rooftop.dangerZones.join(" ")}`
+        : "";
+      this.info.textContent = `SURVIVAL  ROUND ${rooftop.round}/3　残り ${mm}:${ss}　生存 ${aliveN}${danger}`;
+      this.info.style.color = rooftop.dangerZones.length ? "#ff8a8a" : "#cfe6ff";
+    } else {
+      this.info.textContent = `ROOFTOP DUEL  残り ${mm}:${ss}  /  キル上限 ${rooftop.killLimit}`;
+      this.info.style.color = "#cfe6ff";
+    }
   }
 
   // 終了リザルトを中央表示する。

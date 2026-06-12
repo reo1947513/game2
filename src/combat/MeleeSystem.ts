@@ -42,6 +42,9 @@ export class MeleeSystem {
   private shakeAmt = 0; // 画面シェイクの強さ
   private kickLean = 0; // キックの体重移動（カメラリーン）量。適用は applyCameraShake。
 
+  // スイングが命中タイミングに達した瞬間に1回呼ばれる（オンラインの近接PvP通知用）。
+  onSwingHit: ((kind: MeleeType) => void) | null = null;
+
   // 現在のモードが公開する近接対象。敵のいないモードでは null。
   private provider: MeleeTargetProvider | null = null;
 
@@ -222,7 +225,9 @@ export class MeleeSystem {
         const thr = this.meleeType === "knife" ? this.KNIFE_HIT_AT : this.KICK_HIT_AT;
         if (t > thr) {
           this.meleeHitDone = true;
+          const kind = this.meleeType;
           this.applyMeleeHit();
+          if (this.onSwingHit && kind) this.onSwingHit(kind);
         }
       }
 

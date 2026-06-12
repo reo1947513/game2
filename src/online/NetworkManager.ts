@@ -32,6 +32,7 @@ export class NetworkManager {
   roomCode = "";
   isHost = false;
   players: PlayerInfo[] = [];
+  maxPlayers = 2; // 現在のルームの定員（ROOM_CREATED/ROOM_JOINEDで更新）
 
   private rtt = 0; // 直近のRTT（ms）
   private pingTimer: number | null = null;
@@ -112,6 +113,11 @@ export class NetworkManager {
     this.send({ type: "THROW_GRENADE", payload: { gtype, origin, velocity } });
   }
 
+  // 近接攻撃の命中試行（サーバーが距離判定してダメージ処理）。TDMの近接キル用。
+  sendMelee(kind: "knife" | "kick"): void {
+    this.send({ type: "MELEE_HIT", payload: { kind } });
+  }
+
   // 5秒ごとに PING を送って RTT を計測する。
   startPing(): void {
     this.stopPing();
@@ -181,6 +187,7 @@ export class NetworkManager {
         this.roomCode = msg.payload.roomCode;
         this.isHost = true;
         this.players = msg.payload.players;
+        this.maxPlayers = msg.payload.maxPlayers;
         this.createResolve?.({ roomCode: this.roomCode, playerId: this.playerId });
         this.createResolve = null;
         this.emit("roomUpdate", this.players);
@@ -191,6 +198,7 @@ export class NetworkManager {
         this.roomCode = msg.payload.roomCode;
         this.isHost = false;
         this.players = msg.payload.players;
+        this.maxPlayers = msg.payload.maxPlayers;
         this.joinResolve?.();
         this.joinResolve = null;
         this.joinReject = null;

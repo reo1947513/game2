@@ -1,11 +1,18 @@
 // オンライン対戦のロビー画面（ルーム作成 / 参加）。
 // ネットワーク処理は持たず、ボタン操作をコールバックで Game へ渡すだけ。
 export interface LobbyCallbacks {
-  onCreate: () => void;
+  onCreate: (mode: string, maxPlayers: number) => void;
   onJoin: (code: string) => void;
   onStart: () => void;
   onClose: () => void;
 }
+
+// 人数（チーム規模）の選択肢。
+const SIZE_OPTIONS: Array<{ label: string; max: number }> = [
+  { label: "1v1", max: 2 },
+  { label: "2v2", max: 4 },
+  { label: "3v3", max: 6 },
+];
 
 export class RoomLobbyUI {
   private root: HTMLElement;
@@ -17,6 +24,12 @@ export class RoomLobbyUI {
   private joinInput: HTMLInputElement;
   private errorEl: HTMLElement;
   private cb: LobbyCallbacks | null = null;
+
+  private selectedMode = "tdm"; // "online"=自由, "tdm"=チームデスマッチ
+  private selectedMax = 2; // 最大人数（1v1=2 / 2v2=4 / 3v3=6）
+  private modeBtns: HTMLButtonElement[] = [];
+  private sizeBtns: HTMLButtonElement[] = [];
+  private sizeRow!: HTMLElement;
 
   constructor() {
     RoomLobbyUI.injectStyle();
@@ -36,10 +49,57 @@ export class RoomLobbyUI {
     // --- ルームを作成 ---
     const createSec = document.createElement("div");
     createSec.className = "lobby-section";
+    // モード／人数の見た目を塗り分けるヘルパー（外部CSSに依存せずインラインで）。
+    const paint = (btn: HTMLButtonElement, on: boolean): void => {
+      btn.style.background = on ? "#ffd27a" : "rgba(255,255,255,0.06)";
+      btn.style.color = on ? "#1a1a1a" : "#dddddd";
+    };
+    const segBtnCss =
+      "flex:1;padding:8px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.2);font-weight:700;cursor:pointer;font-size:13px;";
+
+    // --- モード選択（ホスト用）---
+    const modeRow = document.createElement("div");
+    modeRow.style.cssText = "display:flex;gap:8px;margin-bottom:10px;";
+    const modeOpts: Array<{ label: string; value: string }> = [
+      { label: "チームデスマッチ", value: "tdm" },
+      { label: "オンライン自由", value: "online" },
+    ];
+    for (const o of modeOpts) {
+      const b = document.createElement("button");
+      b.style.cssText = segBtnCss;
+      b.textContent = o.label;
+      paint(b, o.value === this.selectedMode);
+      b.onclick = () => {
+        this.selectedMode = o.value;
+        for (const mb of this.modeBtns) paint(mb, mb === b);
+        this.sizeRow.style.display = o.value === "online" ? "none" : "flex";
+      };
+      this.modeBtns.push(b);
+      modeRow.appendChild(b);
+    }
+    createSec.appendChild(modeRow);
+
+    // --- 人数選択 ---
+    this.sizeRow = document.createElement("div");
+    this.sizeRow.style.cssText = "display:flex;gap:8px;margin-bottom:10px;";
+    for (const s of SIZE_OPTIONS) {
+      const b = document.createElement("button");
+      b.style.cssText = segBtnCss;
+      b.textContent = s.label;
+      paint(b, s.max === this.selectedMax);
+      b.onclick = () => {
+        this.selectedMax = s.max;
+        for (const sb of this.sizeBtns) paint(sb, sb === b);
+      };
+      this.sizeBtns.push(b);
+      this.sizeRow.appendChild(b);
+    }
+    createSec.appendChild(this.sizeRow);
+
     const createBtn = document.createElement("button");
     createBtn.className = "lobby-btn lobby-btn-primary";
     createBtn.textContent = "ルームを作成";
-    createBtn.onclick = () => this.cb?.onCreate();
+    createBtn.onclick = () => this.cb?.onCreate(this.selectedMode, this.selectedMax);
     createSec.appendChild(createBtn);
 
     this.codeRow = document.createElement("div");

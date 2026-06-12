@@ -14,9 +14,10 @@ import { NetworkManager } from "./online/NetworkManager";
 import { RemotePlayer } from "./online/RemotePlayer";
 import { RoomLobbyUI } from "./ui/RoomLobbyUI";
 import { HomeScreen } from "./ui/HomeScreen";
-import { PlayerState, WorldState, GameEvent } from "./online/netTypes";
+import { PlayerState, WorldState, GameEvent, Team } from "./online/netTypes";
 import { ClientPredictor } from "./online/ClientPredictor";
 import { RemoteProjectile } from "./online/RemoteProjectile";
+import { TeamHUD } from "./ui/TeamHUD";
 import { InputState } from "./types";
 import { GrenadeSystem } from "./combat/GrenadeSystem";
 import { KnifeViewmodel } from "./combat/KnifeViewmodel";
@@ -69,6 +70,9 @@ export class Game {
   private remoteProjectiles = new Map<string, RemoteProjectile>(); // サーバー権威の弾
   private onlineSeq = 0; // 直近の入力seq
   private onlineThrowCd = 0; // オンライン投擲の共通クールダウン
+  private onlineMode = ""; // 現在のオンラインモード（"online"=自由 / "tdm"=チームデスマッチ）
+  private teamHud = new TeamHUD(); // チームデスマッチ用HUD
+  private tdmResultShown = false; // リザルトを表示済みか
 
   // 画面の状態。"menu"=モード選択、"playing"=プレイ中、"result"=結果表示
   private screen: "menu" | "playing" | "result" = "menu";
@@ -285,16 +289,16 @@ export class Game {
     this.wireNetwork();
     const url = this.wsUrl();
     this.lobby.show({
-      onCreate: () => {
+      onCreate: (mode: string, maxPlayers: number) => {
         this.ensureConnected(url)
           .then(() =>
             this.network
-              .createRoom(2, "online", this.selectedStageId)
+              .createRoom(maxPlayers, mode, this.selectedStageId)
               .then(({ roomCode }) => {
                 this.lobby.setCode(roomCode);
                 this.lobby.setRoster(
                   this.network.players.length,
-                  2,
+                  this.network.maxPlayers,
                   this.network.isHost
                 );
               })
@@ -310,7 +314,7 @@ export class Game {
                 this.lobby.setCode(code);
                 this.lobby.setRoster(
                   this.network.players.length,
-                  2,
+                  this.network.maxPlayers,
                   this.network.isHost
                 );
               })
@@ -336,9 +340,9 @@ export class Game {
     if (this.onlineWired) return;
     this.onlineWired = true;
     this.network.on("roomUpdate", (players) => {
-      this.lobby.setRoster(players.length, 2, this.network.isHost);
+      this.lobby.setRoster(players.length, this.network.maxPlayers, this.network.isHost);
     });
-    this.network.on("gameStart", (info) => this.onGameStart(info.stage));
+    this.network.on("gameStart", (info) => this.onGameStart(info.mode, info.stage));
     this.network.on("worldState", (world) => this.onWorldState(world));
     this.network.on("playerLeft", (info) => this.removeGhost(info.playerId));
     this.network.on("error", (e) => this.lobby.setError(this.errMessage(e)));
@@ -348,8 +352,9 @@ export class Game {
   }
 
   // ホストの「ゲーム開始」でサーバーから GAME_START が来たとき。
-  // フェーズ1はモードを起動せず、自由移動でゴースト表示のみ行う。
-  private onGameStart(stage: string): void {
+  // mode が "tdm" ならチームデスマッチ、それ以外は自由移動（ゴースト表示）。
+  private onGameStart(mode: string, stage: string): void {
+    this.onlineMode = mode;
     this.lobby.hide();
     this.ui.hideAll();
     this.screen = "playing";
@@ -391,6 +396,16 @@ export class Game {
       );
     }
     this.network.startPing();
+
+    // チームデスマッチ：チームHUDを表示し、近接の命中をサーバーへ通知する。
+    if (mode === "tdm") {
+      this.tdmResultShown = false;
+      this.teamHud.show();
+      this.melee.onSwingHit = (kind) => this.network.sendMelee(kind);
+    } else {
+      this.teamHud.hide();
+      this.melee.onSwingHit = null;
+    }
 
     this.online = true;
     this.paused = false;
@@ -469,6 +484,30 @@ export class Game {
     }
     // 単発イベント（命中・撃破・爆発）
     for (const ev of world.events) this.applyEvent(ev);
+
+    // チームデスマッチ：スコア・タイマー・死亡表示の更新、終了時のリザルト。
+    if (this.onlineMode === "tdm" && world.tdm) {
+      this.teamHud.update(world.tdm, this.network.playerId);
+      if (world.tdm.phase === "RESULT" && !this.tdmResultShown) {
+        this.tdmResultShown = true;
+        this.suppressUnlockMenu = true;
+        if (document.exitPointerLock) document.exitPointerLock();
+        this.teamHud.showResult(world.tdm, () => this.showMenu());
+      }
+    }
+  }
+
+  // KILLイベントのキルフィード文言（種別アイコン）。
+  private killNote(killType: unknown): string {
+    if (killType === "melee") return "🔪";
+    if (killType === "grenade") return "💣";
+    if (killType === "high") return "🎯";
+    return "🔫";
+  }
+
+  private playerName(id: string): string {
+    const info = this.network.players.find((pl) => pl.playerId === id);
+    return info ? info.name : "Player";
   }
 
   private applyEvent(ev: GameEvent): void {
@@ -481,7 +520,18 @@ export class Game {
         const sp = this.stage.playerSpawn;
         this.player.respawn(sp.x, sp.y, sp.z); // 自分が倒された → スポーンへ
       }
-      if (p.shooterId === self) this.hud.addKillFeed("🎯 ELIMINATED");
+      if (this.onlineMode === "tdm") {
+        // チームカラー付きキルフィード
+        const team = (p.team === "BLUE" ? "BLUE" : "RED") as Team;
+        this.teamHud.addKill(
+          this.playerName(String(p.shooterId)),
+          this.playerName(String(p.targetId)),
+          team,
+          this.killNote(p.killType)
+        );
+      } else if (p.shooterId === self) {
+        this.hud.addKillFeed("🎯 ELIMINATED");
+      }
     } else if (ev.type === "GRENADE_EXPLODE") {
       this.grenades.explodeFragAt(Number(p.x), Number(p.y), Number(p.z));
     } else if (ev.type === "FLASHBANG_EXPLODE") {
@@ -510,7 +560,10 @@ export class Game {
   // オンラインセッションを抜ける（ゴースト除去・切断）。
   private leaveOnline(): void {
     this.online = false;
+    this.onlineMode = "";
     this.weapons.onShot = null;
+    this.melee.onSwingHit = null;
+    this.teamHud.hide();
     this.network.stopPing();
     for (const id of [...this.remotePlayers.keys()]) this.removeGhost(id);
     for (const id of [...this.remoteProjectiles.keys()]) this.removeProjectile(id);

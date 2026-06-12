@@ -14,6 +14,11 @@ export class CoopHUD {
   private resultInner: HTMLElement;
   private feed: HTMLElement;
   private onClose: (() => void) | null = null;
+  // プレイヤー行のDOMキャッシュ（毎フレーム作り直さず値だけ更新する）
+  private rowCache = new Map<
+    string,
+    { row: HTMLElement; name: HTMLElement; fill: HTMLElement; status: HTMLElement }
+  >();
 
   constructor() {
     this.injectStyle();
@@ -96,45 +101,56 @@ export class CoopHUD {
       this.top.textContent = `WAVE ${coop.currentWave} / ∞　　敵 ${coop.enemiesRemaining}　　SCORE ${coop.totalScore}`;
     }
 
-    // 左：プレイヤー状態リスト
-    this.list.innerHTML = "";
+    // 左：プレイヤー状態リスト（playerId別に行をキャッシュし、値だけ更新する）
+    const seen = new Set<string>();
     for (const p of coop.players) {
-      const row = document.createElement("div");
-      row.className = "coop-row";
-      if (p.playerId === selfId) row.classList.add("coop-self");
-
-      const name = document.createElement("div");
-      name.className = "coop-name";
-      name.textContent = nameOf(p.playerId);
-
-      const barWrap = document.createElement("div");
-      barWrap.className = "coop-bar";
-      const fill = document.createElement("div");
-      fill.className = "coop-bar-fill";
-      const ratio = Math.max(0, Math.min(1, p.hp / 100));
-      fill.style.width = `${Math.round(ratio * 100)}%`;
-      if (p.status === "DOWN") fill.style.background = "#e7b53a";
-      else if (p.status === "DEAD") fill.style.background = "#777";
-      else fill.style.background = ratio <= 0.3 ? "#e7503a" : "#46d36a";
-      barWrap.appendChild(fill);
-
-      const st = document.createElement("div");
-      st.className = "coop-status";
-      if (p.status === "DOWN") {
-        st.textContent = "DOWN";
-        st.style.color = "#ffcf57";
-      } else if (p.status === "DEAD") {
-        st.textContent = "DEAD";
-        st.style.color = "#bbb";
-      } else {
-        st.textContent = `HP ${Math.round(p.hp)}`;
-        st.style.color = "#cfe";
+      seen.add(p.playerId);
+      let c = this.rowCache.get(p.playerId);
+      if (!c) {
+        const row = document.createElement("div");
+        row.className = "coop-row";
+        if (p.playerId === selfId) row.classList.add("coop-self");
+        const name = document.createElement("div");
+        name.className = "coop-name";
+        name.textContent = nameOf(p.playerId);
+        const barWrap = document.createElement("div");
+        barWrap.className = "coop-bar";
+        const fill = document.createElement("div");
+        fill.className = "coop-bar-fill";
+        barWrap.appendChild(fill);
+        const status = document.createElement("div");
+        status.className = "coop-status";
+        row.appendChild(name);
+        row.appendChild(barWrap);
+        row.appendChild(status);
+        this.list.appendChild(row);
+        c = { row, name, fill, status };
+        this.rowCache.set(p.playerId, c);
       }
 
-      row.appendChild(name);
-      row.appendChild(barWrap);
-      row.appendChild(st);
-      this.list.appendChild(row);
+      const ratio = Math.max(0, Math.min(1, p.hp / 100));
+      c.fill.style.width = `${Math.round(ratio * 100)}%`;
+      if (p.status === "DOWN") c.fill.style.background = "#e7b53a";
+      else if (p.status === "DEAD") c.fill.style.background = "#777";
+      else c.fill.style.background = ratio <= 0.3 ? "#e7503a" : "#46d36a";
+
+      if (p.status === "DOWN") {
+        c.status.textContent = "DOWN";
+        c.status.style.color = "#ffcf57";
+      } else if (p.status === "DEAD") {
+        c.status.textContent = "DEAD";
+        c.status.style.color = "#bbb";
+      } else {
+        c.status.textContent = `HP ${Math.round(p.hp)}`;
+        c.status.style.color = "#cfe";
+      }
+    }
+    // いなくなったプレイヤーの行を取り除く
+    for (const [id, c] of this.rowCache) {
+      if (!seen.has(id)) {
+        if (c.row.parentElement === this.list) this.list.removeChild(c.row);
+        this.rowCache.delete(id);
+      }
     }
 
     // 中央：蘇生バー

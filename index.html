@@ -192,52 +192,209 @@
         inset: 0;
         z-index: 30;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 18px;
-        background: radial-gradient(circle at 50% 40%, #14171c 0%, #050608 70%);
+        padding: clamp(10px, 3vh, 30px);
         cursor: pointer;
+        overflow: auto;
+        color: #e8eaed;
+        font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+        background:
+          radial-gradient(70% 50% at 50% 0%, rgba(255, 180, 60, 0.10), transparent 60%),
+          radial-gradient(120% 90% at 50% 50%, #14171d 0%, #0a0c10 55%, #050608 100%);
       }
-      #overlay h1 {
-        font-size: 44px;
-        letter-spacing: 6px;
-        color: #ffcc55;
-        text-shadow: 0 0 24px rgba(255, 150, 0, 0.5);
+      #overlay::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 70px),
+          repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 70px),
+          radial-gradient(120% 80% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.6) 100%);
+        pointer-events: none;
       }
-      #overlay .sub {
-        font-size: 14px;
-        color: #9aa0a6;
+      #overlay .ov-frame {
+        position: relative;
+        width: min(1080px, 96vw);
+        padding: clamp(16px, 3vh, 34px) clamp(18px, 4vw, 50px);
+        border: 1px solid rgba(255, 184, 60, 0.22);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(16, 19, 24, 0.55), rgba(8, 10, 13, 0.55));
+        box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.5);
+      }
+      #overlay .ov-corner {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border: 2px solid #ffb83c;
+        opacity: 0.8;
+      }
+      #overlay .ov-corner.tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+      #overlay .ov-corner.tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+      #overlay .ov-corner.bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+      #overlay .ov-corner.br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+      #overlay .ov-headline {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+      #overlay .ov-meta {
+        font-size: 10px;
         letter-spacing: 2px;
+        line-height: 1.6;
+        color: #7e8794;
       }
-      #overlay .keys {
-        margin-top: 12px;
-        font-size: 13px;
-        color: #c8ccd0;
-        line-height: 2;
+      #overlay .ov-meta.right { text-align: right; }
+      #overlay .ov-meta b { color: #cfd5db; font-weight: 700; }
+      #overlay .ov-meta .on { color: #5fd38a; }
+      #overlay .ov-emblem {
+        width: 34px;
+        height: 26px;
+        background: linear-gradient(135deg, #ffd884, #f0a01c);
+        clip-path: polygon(0 0, 100% 0, 80% 60%, 50% 100%, 20% 60%);
+        filter: drop-shadow(0 0 10px rgba(255, 176, 60, 0.5));
+      }
+      #overlay .ov-title {
+        margin: 6px 0 0;
         text-align: center;
+        font-size: clamp(40px, 8vw, 92px);
+        font-weight: 900;
+        letter-spacing: clamp(4px, 1.2vw, 12px);
+        line-height: 1.05;
+        background: linear-gradient(180deg, #fff6d0 0%, #ffd35a 38%, #d98b12 62%, #ffe08a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 4px 18px rgba(230, 150, 20, 0.45));
       }
-      #overlay .keys b {
-        color: #ffcc55;
-      }
-      #overlay .start {
+      #overlay .ov-sub {
+        text-align: center;
         margin-top: 8px;
-        padding: 12px 28px;
-        border: 1px solid #ffcc55;
-        border-radius: 6px;
-        color: #ffcc55;
-        font-size: 16px;
+        font-size: clamp(11px, 1.4vw, 15px);
+        letter-spacing: clamp(2px, 0.6vw, 6px);
+        color: #8a93a0;
+      }
+      #overlay .ov-cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: clamp(8px, 1.2vw, 14px);
+        margin: clamp(14px, 2.4vh, 26px) 0;
+      }
+      #overlay .ov-card {
+        grid-column: span 1;
+        padding: 12px 16px;
+        background: linear-gradient(180deg, rgba(22, 26, 32, 0.7), rgba(12, 14, 18, 0.7));
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: 2px solid rgba(255, 184, 60, 0.5);
+        border-radius: 10px;
+      }
+      #overlay .ov-card.s2 { grid-column: span 2; }
+      #overlay .ov-card.s4 { grid-column: span 4; }
+      #overlay .ov-ch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 9px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #ffce7a;
+      }
+      #overlay .ov-ch.sm { font-size: 13px; margin-bottom: 4px; }
+      #overlay .ov-ch svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: #ffb83c;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      #overlay .ov-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px 18px;
+      }
+      #overlay .ov-kv {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        font-size: 12.5px;
+        color: #aeb6c0;
+        line-height: 1.9;
+      }
+      #overlay .ov-kv.wrap { gap: 10px; }
+      #overlay .ov-keys { display: inline-flex; gap: 3px; }
+      #overlay .ov-hint { color: #7e8794; font-size: 11px; }
+      #overlay .ov-note { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      #overlay .ov-note .ov-kv { line-height: 1.4; }
+      #overlay kbd {
+        display: inline-grid;
+        place-items: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 7px;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: #ffd884;
+        background: rgba(255, 184, 60, 0.08);
+        border: 1px solid rgba(255, 184, 60, 0.5);
+        border-radius: 5px;
+        box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+      }
+      #overlay .ov-start {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(10px, 2vw, 26px);
+        margin: clamp(6px, 1.6vh, 16px) auto 4px;
+        width: min(620px, 90%);
+        padding: 16px 24px;
+        color: #ffe6a8;
+        border: 2px solid #ffb83c;
+        clip-path: polygon(6% 0, 94% 0, 100% 50%, 94% 100%, 6% 100%, 0 50%);
+        background: linear-gradient(180deg, rgba(255, 184, 60, 0.16), rgba(255, 150, 20, 0.06));
+        box-shadow: 0 0 30px rgba(255, 176, 60, 0.35), inset 0 0 24px rgba(255, 176, 60, 0.18);
+        animation: pulse 1.8s ease-in-out infinite;
+      }
+      #overlay .ov-start .chev { font-size: clamp(18px, 3vw, 30px); color: #ffb83c; }
+      #overlay .ov-start-main {
+        text-align: center;
+        font-size: clamp(22px, 3.4vw, 40px);
+        font-weight: 900;
+        letter-spacing: clamp(2px, 0.8vw, 8px);
+        color: #fff4d6;
+        text-shadow: 0 2px 12px rgba(255, 150, 20, 0.6);
+      }
+      #overlay .ov-start-main small {
+        display: block;
+        font-size: clamp(10px, 1.2vw, 13px);
+        font-weight: 600;
         letter-spacing: 3px;
-        animation: pulse 1.6s ease-in-out infinite;
+        color: #ffce7a;
+        margin-top: 4px;
+      }
+      #overlay .ov-foot {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
       }
       @keyframes pulse {
         0%,
         100% {
-          opacity: 0.6;
+          box-shadow: 0 0 22px rgba(255, 176, 60, 0.28), inset 0 0 18px rgba(255, 176, 60, 0.14);
         }
         50% {
-          opacity: 1;
+          box-shadow: 0 0 40px rgba(255, 176, 60, 0.55), inset 0 0 28px rgba(255, 176, 60, 0.24);
         }
+      }
+      @media (max-width: 720px) {
+        #overlay .ov-cards { grid-template-columns: repeat(2, 1fr); }
+        #overlay .ov-card.s2, #overlay .ov-card.s4 { grid-column: span 2; }
+        #overlay .ov-grid { grid-template-columns: 1fr; }
       }
       #overlay.hidden {
         display: none;
@@ -323,21 +480,20 @@
         }
       }
 
-      /* スマホ・タブレットでは開始画面のキーボード説明を隠し、文字を小さめに */
-      body.touch-device #overlay .keys {
+      /* スマホ・タブレットでは開始画面のキーボード説明カードを隠す（操作はタッチUIのため） */
+      body.touch-device #overlay .ov-cards {
         display: none;
       }
       @media (max-height: 520px) {
-        body.touch-device #overlay h1 {
-          font-size: 30px;
+        body.touch-device #overlay .ov-title {
+          font-size: 40px;
           letter-spacing: 4px;
         }
-        body.touch-device #overlay .sub {
+        body.touch-device #overlay .ov-sub {
           font-size: 12px;
         }
-        body.touch-device #overlay .start {
-          font-size: 14px;
-          padding: 10px 22px;
+        body.touch-device #overlay .ov-headline {
+          display: none;
         }
       }
       /* ゲーム中の操作ヒント（左下）。タッチ端末はボタンがあるので隠す。 */
@@ -448,18 +604,84 @@
     </div>
 
     <div id="overlay">
-      <h1>ARENA STRIKE</h1>
-      <div class="sub">TEST STAGE — CHARACTER CONTROL PROTOTYPE</div>
-      <div class="keys">
-        移動 <b>W A S D</b> ／ 視点 <b>マウス</b> ／ ジャンプ <b>Space</b>（空中でもう一度押すと2段ジャンプ）<br />
-        ダッシュ <b>Shift</b> ／ しゃがみ <b>Ctrl</b>（ダッシュ中に押すとスライディング）／ 伏せ <b>Z</b>（トグル）<br />
-        壁ジャンプ <b>壁に触れて空中で Space</b><br />
-        射撃 <b>左クリック</b> ／ 覗き込み(ADS) <b>右クリック</b> ／ リロード <b>R</b><br />
-        武器切替 <b>1</b>＝アサルト <b>2</b>＝スナイパー <b>3</b>＝ショットガン <b>4</b>＝SMG<br />
-        蹴り <b>V</b> ／ ナイフ斬り <b>F</b> ／ 手榴弾 <b>G</b>（長押しで軌道表示・離して投擲）<br />
-        ＜蹴り・ナイフ・手榴弾はウェーブ／デスマッチでのみ使用可＞ ／ ポインタ解除 <b>Esc</b>
+      <div class="ov-frame">
+        <span class="ov-corner tl"></span><span class="ov-corner tr"></span>
+        <span class="ov-corner bl"></span><span class="ov-corner br"></span>
+
+        <div class="ov-headline">
+          <div class="ov-meta left">SYSTEM CHECK<br /><b>STATUS: <span class="on">ONLINE</span></b></div>
+          <div class="ov-emblem"></div>
+          <div class="ov-meta right">ARENA PROTOCOL v1.0<br /><b>AS-TCP-2024-07-18</b></div>
+        </div>
+
+        <h1 class="ov-title">ARENA STRIKE</h1>
+        <div class="ov-sub">TEST STAGE — CHARACTER CONTROL PROTOTYPE</div>
+
+        <div class="ov-cards">
+          <div class="ov-card s2">
+            <div class="ov-ch">
+              <svg viewBox="0 0 24 24"><circle cx="14" cy="5" r="2"/><path d="M12 8l-2 5 3 2 1 6M10 13l-5 2M13 15l5 1"/></svg>移動
+            </div>
+            <div class="ov-grid">
+              <div class="ov-kv">移動 <span class="ov-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
+              <div class="ov-kv">ダッシュ <kbd>Shift</kbd></div>
+              <div class="ov-kv">視点 <kbd>マウス</kbd></div>
+              <div class="ov-kv">しゃがみ <kbd>Ctrl</kbd></div>
+              <div class="ov-kv">ジャンプ <kbd>Space</kbd></div>
+              <div class="ov-kv">伏せ <kbd>Z</kbd></div>
+            </div>
+          </div>
+
+          <div class="ov-card">
+            <div class="ov-ch">
+              <svg viewBox="0 0 24 24"><path d="M6 14l6-7 6 7M6 19l6-7 6 7"/></svg>壁ジャンプ
+            </div>
+            <div class="ov-kv">壁に触れて空中で <kbd>Space</kbd></div>
+          </div>
+
+          <div class="ov-card">
+            <div class="ov-ch">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>戦闘
+            </div>
+            <div class="ov-kv">射撃 <kbd>左クリック</kbd></div>
+            <div class="ov-kv">覗き込み(ADS) <kbd>右クリック</kbd></div>
+            <div class="ov-kv">リロード <kbd>R</kbd></div>
+          </div>
+
+          <div class="ov-card s2">
+            <div class="ov-ch">
+              <svg viewBox="0 0 24 24"><path d="M8 3v10M12 3v10M16 3v10M7 13h10v6H7z"/></svg>武器切替
+            </div>
+            <div class="ov-kv wrap"><kbd>1</kbd>＝アサルト　<kbd>2</kbd>＝スナイパー　<kbd>3</kbd>＝ショットガン　<kbd>4</kbd>＝SMG</div>
+          </div>
+
+          <div class="ov-card s2">
+            <div class="ov-ch">
+              <svg viewBox="0 0 24 24"><path d="M7 11V7a2 2 0 0 1 4 0M11 9V6a2 2 0 0 1 4 0v3M15 9a2 2 0 0 1 4 0v5a6 6 0 0 1-6 6H10a5 5 0 0 1-5-5v-1l-1-3a1.5 1.5 0 0 1 3-1l.5 2"/></svg>近接・投擲
+            </div>
+            <div class="ov-kv">蹴り <kbd>V</kbd>　ナイフ切替 <kbd>F</kbd>　手榴弾 <kbd>G</kbd><span class="ov-hint">（長押しで軌道表示・離して投擲）</span></div>
+          </div>
+
+          <div class="ov-card s4 ov-note">
+            <div class="ov-ch sm">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>補足
+            </div>
+            <div class="ov-kv">蹴り・ナイフ・手榴弾はウェーブ／デスマッチでのみ使用可</div>
+            <div class="ov-kv">ポインタ解除 <kbd>Esc</kbd></div>
+          </div>
+        </div>
+
+        <div class="ov-start">
+          <span class="chev">&#187;</span>
+          <span class="ov-start-main">ゲーム開始<small>クリックしてスタート</small></span>
+          <span class="chev">&#187;</span>
+        </div>
+
+        <div class="ov-foot">
+          <div class="ov-meta left">ECHO UNIT<br /><b>READY</b></div>
+          <div class="ov-meta right">CONNECTION<br /><b class="on">STABLE</b></div>
+        </div>
       </div>
-      <div class="start">クリックして開始</div>
     </div>
 
     <div id="rotate-notice">

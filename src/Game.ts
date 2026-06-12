@@ -94,6 +94,7 @@ export class Game {
   private ziplineRide: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number } | null = null;
   private ePrev = false; // Eキーのエッジ検出用（ジップライン乗降）
   private rooftopRound = 0; // サバイバルの現在ラウンド（ラウンド切替時の再配置検知用）
+  private spectatingTarget: string | null = null; // サバイバル脱落後に追従する生存者ID
   private scoreboardHeld = false; // TAB長押し（TDMスコアボード表示）
 
   private pauseOverlay: HTMLElement | null = null; // PC版Escの一時停止オーバーレイ
@@ -438,6 +439,7 @@ export class Game {
     this.rooftopHud.hide();
     this.ziplineRide = null;
     this.rooftopRound = 0;
+    this.spectatingTarget = null;
     this.melee.onSwingHit = null;
     this.player.setSpeedCap(null);
     if (mode === "tdm") {
@@ -659,6 +661,15 @@ export class Game {
         this.rooftopRound = world.rooftop.round;
         if (prev > 0) this.respawnToRooftopSpawn();
       }
+      // サバイバル：脱落後は生存者を観戦する（サーバー指定の spectatingId を追従）。
+      const meP = world.rooftop.players.find((p) => p.playerId === this.network.playerId);
+      if (world.rooftop.rule === "survival" && world.rooftop.phase === "PLAYING" && meP && !meP.isAlive) {
+        this.spectatingTarget = meP.spectatingId;
+        this.rooftopHud.setSpectating(meP.spectatingId ? this.playerName(meP.spectatingId) : null);
+      } else {
+        this.spectatingTarget = null;
+        this.rooftopHud.setSpectating(null);
+      }
       this.rooftopHud.update(world.rooftop, this.network.playerId, (id) => this.playerName(id));
       if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
         this.rooftopResultShown = true;
@@ -787,6 +798,7 @@ export class Game {
     this.rooftopHud.hide();
     this.ziplineRide = null;
     this.rooftopRound = 0;
+    this.spectatingTarget = null;
     this.touch.setReviveVisible(false);
     this.player.setSpeedCap(null);
     this.network.stopPing();
@@ -948,6 +960,17 @@ export class Game {
 
     // オンライン中：自分の状態を送信し、他プレイヤーのゴーストを補間更新する
     if (this.online) this.updateOnline(inputState, dt);
+
+    // 観戦カメラ：サバイバルで脱落後、生存者を三人称で追ってカメラを上書きする
+    if (this.spectatingTarget) {
+      const rp = this.remotePlayers.get(this.spectatingTarget);
+      if (rp) {
+        const yaw = rp.group.rotation.y;
+        const t = rp.group.position;
+        this.camera.position.set(t.x + Math.sin(yaw) * 4, t.y + 2.6, t.z + Math.cos(yaw) * 4);
+        this.camera.lookAt(t.x, t.y + 1.6, t.z);
+      }
+    }
 
     // 武器更新（速度連動FOVにランジ状態を反映）
     this.weapons.setMeleeLunging(this.melee.lungeActive());

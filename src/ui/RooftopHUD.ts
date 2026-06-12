@@ -11,6 +11,7 @@ export class RooftopHUD {
   private resultInner: HTMLElement;
   private feed: HTMLElement;
   private prompt: HTMLElement;
+  private spectate: HTMLElement;
 
   constructor() {
     this.root = document.createElement("div");
@@ -48,10 +49,28 @@ export class RooftopHUD {
       '<span style="display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border-radius:5px;background:#ffcc00;color:#1a1200;font-weight:800;margin-right:8px;">E</span>' +
       "ジップライン</div>";
 
+    // 観戦バナー（サバイバルで脱落後、画面上中央）。
+    this.spectate = document.createElement("div");
+    this.spectate.style.cssText =
+      "position:fixed;left:0;right:0;top:46%;z-index:46;display:none;justify-content:center;pointer-events:none;font-family:'Segoe UI',system-ui,sans-serif;";
+
     document.body.appendChild(this.root);
     document.body.appendChild(this.result);
     document.body.appendChild(this.feed);
     document.body.appendChild(this.prompt);
+    document.body.appendChild(this.spectate);
+  }
+
+  // 観戦バナーの表示（name=追従中プレイヤー名、null で非表示）。
+  setSpectating(name: string | null): void {
+    if (!name) {
+      this.spectate.style.display = "none";
+      return;
+    }
+    this.spectate.innerHTML =
+      '<div style="padding:10px 22px;border-radius:10px;background:rgba(2,6,15,0.7);border:1px solid #6aa8ff;color:#eaf3ff;font-size:16px;text-shadow:0 1px 2px #000;">' +
+      `観戦中　▶ <span style="color:#9fc8ff;font-weight:700;">${escapeHtml(name)}</span></div>`;
+    this.spectate.style.display = "flex";
   }
 
   // ジップライン乗り込みプロンプトの表示/非表示。
@@ -94,6 +113,7 @@ export class RooftopHUD {
     this.board.innerHTML = "";
     this.feed.innerHTML = "";
     this.prompt.style.display = "none";
+    this.spectate.style.display = "none";
   }
 
   // 上部スコアボードを更新する。

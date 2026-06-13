@@ -24,6 +24,11 @@ const WEAPON_GLTF = import.meta.glob("../models/weapons/*.gltf", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
+// 武器の実モデル（リアル系銃 fbx・FPS銃 obj）。別種の銃モデル。
+const WEAPON_OTHER = import.meta.glob("../models/weapons/*.{fbx,obj}", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
 
 // 取込テクスチャ（キャラの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
 const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
@@ -47,6 +52,11 @@ const PROPS = import.meta.glob("../models/props/*.{fbx,gltf,glb,obj}", {
   import: "default",
 }) as Record<string, () => Promise<string>>;
 const MAN_MODEL = import.meta.glob("../models/characters/man.fbx", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+// キャラの実モデル全般（survivor/man/ranger/peasant）。skin→モデル対応に使う。
+const CHAR_MODELS = import.meta.glob("../models/characters/*.fbx", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
@@ -119,11 +129,18 @@ export class AssetsPanel implements DevPanel {
       }
     }
 
+    // 武器の実モデル（リアル系 fbx・FPS銃 obj：別種の銃）
+    this.element.appendChild(this.section("武器モデル（取込・fbx/obj）"));
+    await this.buildModelGrid(renderer, WEAPON_OTHER, null);
+
     // ゲーム内武器（箱モデル）
     this.element.appendChild(this.section("ゲーム内武器"));
     const wGrid = this.grid();
     for (const w of INGAME_WEAPONS) {
       const model = this.app.ctx.weapons.devWeaponModel(w.kind).clone();
+      // 非選択武器はモデルが visible=false のため、サムネ用に全て表示へ戻す。
+      model.visible = true;
+      model.traverse((o) => (o.visible = true));
       model.position.set(0, 0, 0);
       wGrid.appendChild(
         this.card(this.renderObject(renderer, model), w.label, "cover", () => this.previewIngame(w.kind, w.label))
@@ -189,7 +206,12 @@ export class AssetsPanel implements DevPanel {
     for (const [path, getUrl] of Object.entries(CHARACTER_TEX)) {
       try {
         const url = await getUrl();
-        tGrid.appendChild(this.card(url, this.texName(path), "contain"));
+        const make = this.texturePreviewMake(path);
+        tGrid.appendChild(
+          this.card(url, this.texName(path), "contain", make
+            ? () => this.modal.open(make, this.texName(path), [{ label: "種別", value: "キャラテクスチャ→実モデル3D" }])
+            : undefined)
+        );
       } catch {
         // 読み込めない画像はスキップ
       }
@@ -317,6 +339,35 @@ export class AssetsPanel implements DevPanel {
   private texLoaderByName(sub: string): (() => Promise<string>) | null {
     const k = Object.keys(CHARACTER_TEX).find((p) => (p.split("/").pop() ?? "").includes(sub));
     return k ? CHARACTER_TEX[k] : null;
+  }
+
+  // キャラの実モデル(fbx)をファイル名で取得。
+  private charModelLoader(file: string): (() => Promise<string>) | null {
+    const k = Object.keys(CHAR_MODELS).find((p) => p.endsWith("/" + file));
+    return k ? CHAR_MODELS[k] : null;
+  }
+
+  // 平面キャラテクスチャ→対応する実モデルに貼って3D表示する make()。対応モデルが無ければ null。
+  private texturePreviewMake(skinPath: string): (() => Promise<THREE.Object3D | null>) | null {
+    const name = skinPath.split("/").pop() ?? "";
+    const skinLoader = CHARACTER_TEX[skinPath];
+    if (!skinLoader) return null;
+    if (name.startsWith("モンスター")) {
+      const k = Object.keys(MONSTERS)[0];
+      if (!k) return null;
+      const ml = MONSTERS[k];
+      return () => this.loadAndTex(ml, "gltf", skinLoader);
+    }
+    let file: string | null = null;
+    if (name.startsWith("サバイバー") || name.includes("ゾンビ")) file = "survivor.fbx";
+    else if (name.startsWith("レンジャー")) file = "ranger.fbx";
+    else if (name.startsWith("農民")) file = "peasant.fbx";
+    else if (name.startsWith("素体") || name.startsWith("服あり") || name.startsWith("女性") || name.startsWith("男性"))
+      file = "man.fbx";
+    if (!file) return null;
+    const ml = this.charModelLoader(file);
+    if (!ml) return null;
+    return () => this.loadAndTex(ml, "fbx", skinLoader);
   }
 
   // モデルを読み込み、texLoader があれば全メッシュにそのテクスチャを map 適用して返す。

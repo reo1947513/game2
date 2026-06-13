@@ -34,6 +34,12 @@ ENV VITE_WS_URL=$VITE_WS_URL
 ARG VITE_DEV_RANGE=
 ENV VITE_DEV_RANGE=$VITE_DEV_RANGE
 
+# DEV RANGE のアプリ内パスワード（v0.0.1 3クリック後に入力する値）。
+# Vite はビルド時に import.meta.env.VITE_DEV_PASSWORD を焼き込むため、build より前に ENV へ置く。
+# 専用サービスだけ build-arg / Variable で VITE_DEV_PASSWORD を設定する。既定は空（入れない）。
+ARG VITE_DEV_PASSWORD=
+ENV VITE_DEV_PASSWORD=$VITE_DEV_PASSWORD
+
 # tsc --noEmit && vite build → dist/
 RUN npm run build
 

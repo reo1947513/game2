@@ -31,13 +31,17 @@ Basic 認証で保護**します。同一リポジトリから、ビルド時フ
 ### Railway に専用サービスを追加する手順
 
 1. 同じリポジトリから新しい Railway サービス（例: `arena-strike-devrange`）を作成する。
-2. そのサービスの **Build Args** に以下を設定する（ビルド時にバンドルへ焼き込まれる）。
-   - `VITE_DEV_RANGE=true`
+2. そのサービスの **Variables** に以下を設定する（Railway は変数を build-arg としても渡すので、Dockerfile の
+   `ARG` 宣言済みのものはビルド時にバンドルへ焼き込まれる）。
+   - `VITE_DEV_RANGE=true` … DEV RANGE をバンドルに含める
+   - `VITE_DEV_PASSWORD=任意のパスワード` … メニューの v0.0.1 を3クリック後に入力する値（**これを設定しないと何を入れても入れない**）
    - 必要なら `VITE_WS_URL` は本番と同じ値（オンライン機能は DEV RANGE では使わないので任意）
-3. そのサービスの **Variables（実行時環境変数）** に Basic 認証のID/パスワードを設定する。
+3. （任意・二重防護）サーバー Basic 認証も併用するなら **Variables** に追加する（実行時）。
    - `DEVRANGE_USER=任意のID`
    - `DEVRANGE_PASS=十分に長いパスワード`
-4. デプロイする。発行された URL を開くとブラウザの認証ダイアログが出て、上記の資格情報で入れる。
+4. デプロイ（または Redeploy で再ビルド）する。`VITE_DEV_*` はビルド時に焼き込むため、値を変えたら必ず再ビルドが要る。
+5. 発行された URL を開く → （Basic 認証を設定していればブラウザ認証 →）通常メニュー → v0.0.1 を5秒以内に3回クリック →
+   `VITE_DEV_PASSWORD` の値を入力 → DEV RANGE 起動。
 
 ### 仕組み
 

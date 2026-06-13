@@ -28,6 +28,12 @@ const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
   import: "default",
 }) as Record<string, () => Promise<string>>;
 
+// 取込テクスチャ（ステージの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
+const STAGE_TEX = import.meta.glob("../textures/stages/*.png", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+
 const INGAME_WEAPONS: Array<{ kind: WeaponKind; label: string }> = [
   { kind: WeaponKind.Assault, label: "ASSAULT" },
   { kind: WeaponKind.Sniper, label: "SNIPER" },
@@ -143,6 +149,19 @@ export class AssetsPanel implements DevPanel {
       sGrid.appendChild(cardEl);
     }
     this.element.appendChild(sGrid);
+
+    // テクスチャ（ステージ・BaseColor 画像をそのまま表示）
+    this.element.appendChild(this.section("テクスチャ（ステージ・BaseColor）"));
+    const stGrid = this.grid();
+    this.element.appendChild(stGrid);
+    for (const [path, getUrl] of Object.entries(STAGE_TEX)) {
+      try {
+        const url = await getUrl();
+        stGrid.appendChild(this.card(url, this.texName(path), "contain"));
+      } catch {
+        // 読み込めない画像はスキップ
+      }
+    }
 
     if (this.env) {
       this.env.dispose();

@@ -704,4 +704,9 @@ export class WeaponSystem {
   devSpec(kind: WeaponKind): WeaponSpec {
     return this.weapons.get(kind)!.spec;
   }
+
+  // 指定武器の生モデル（カメラに付いた THREE.Group）を返す。ギャラリーで clone 元に使う。
+  devWeaponModel(kind: WeaponKind): THREE.Group {
+    return this.weapons.get(kind)!.model;
+  }
 }

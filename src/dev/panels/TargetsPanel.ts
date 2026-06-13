@@ -85,11 +85,26 @@ export class TargetsPanel implements DevPanel {
       z = origin.z + dir.z * 15;
     }
 
-    const t = new DevTarget(ctx.scene, this.spawnKind, x, z);
+    this.spawnAt(this.spawnKind, x, z);
+  }
+
+  // 指定座標へ的を生成して登録する（addTarget と射撃場プリセットで共用）。
+  private spawnAt(kind: DevTargetKind, x: number, z: number): void {
+    const ctx = this.app.ctx;
+    const t = new DevTarget(ctx.scene, kind, x, z);
     ctx.weapons.enemyTargets.push(t.unit.hitbox);
     ctx.weapons.enemyTargets.push(t.unit.headHitbox);
     this.targets.push(t);
     this.refreshCount();
+  }
+
+  // 射撃場用：既存の的を一掃してから、動く敵を数体だけ自動配置する。
+  // （静止ターゲットは射撃場ステージ側に整列しているので、ここでは動く敵を出す。）
+  spawnPreset(): void {
+    this.clearAll();
+    this.spawnAt("patrol", -6, -22);
+    this.spawnAt("patrol", 6, -22);
+    this.spawnAt("random", 0, -26);
   }
 
   // DEV RANGE 終了時：全的削除＋命中フック解除。

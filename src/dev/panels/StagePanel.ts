@@ -45,6 +45,20 @@ export class StagePanel implements DevPanel {
     this.element.appendChild(cur);
 
     // ステージ切替
+    // 射撃場（専用レンジ：的・敵が出て、読み込んだ武器で撃てる）
+    const rangeWrap = document.createElement("div");
+    rangeWrap.className = "dr-stages";
+    const rangeBtn = this.btn("▶ 射撃場に入る（的・敵＋武器テスト）", () => this.app.enterRange());
+    rangeBtn.classList.toggle("on", (ctx.stage.stageId as string) === "range");
+    rangeWrap.appendChild(rangeBtn);
+    this.element.appendChild(rangeWrap);
+
+    // 確認用ステージ（素のまま確認。ワイヤーフレーム・コライダー・照明・マテリアル一覧用）
+    const stagesLabel = document.createElement("div");
+    stagesLabel.className = "dr-cur";
+    stagesLabel.textContent = "確認用ステージ（素のまま確認）";
+    this.element.appendChild(stagesLabel);
+
     const stages = document.createElement("div");
     stages.className = "dr-stages";
     for (const s of STAGE_LIST) {

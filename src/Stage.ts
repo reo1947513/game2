@@ -132,6 +132,17 @@ export class Stage {
     for (const [x, y, z] of pts) this.spawns.push(new THREE.Vector3(x, y, z));
   }
 
+  // DEV RANGE 用：任意のビルド関数でカスタムステージ（射撃場など）を読み込む。
+  // 既存ステージと同じ生存サイクル（teardown→build→spawn）に乗せる汎用メソッド。
+  // STAGE_LIST には載らないため、本番メニューには現れない。
+  loadCustom(build: (ctx: StageContext) => THREE.Vector3, id?: string): void {
+    this.teardown();
+    const spawn = build(this.makeContext());
+    this.playerSpawn.copy(spawn);
+    this.setSpawns([[spawn.x, spawn.y, spawn.z]]);
+    if (id) this.stageId = id as StageId;
+  }
+
   // skyframe など外部build関数へ渡す道具一式を作る。
   private makeContext(): StageContext {
     return {

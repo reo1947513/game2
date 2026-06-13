@@ -8,6 +8,8 @@ import { StagePanel } from "./panels/StagePanel";
 import { TargetsPanel } from "./panels/TargetsPanel";
 import { CameraPanel } from "./panels/CameraPanel";
 import { StatsPanel } from "./panels/StatsPanel";
+import { AssetsPanel } from "./panels/AssetsPanel";
+import { buildRange } from "./RangeStage";
 
 // ===== 開発者テストレンジ DEV RANGE（オーケストレータ）=====
 //
@@ -16,9 +18,10 @@ import { StatsPanel } from "./panels/StatsPanel";
 // タブ（WEAPON / STAGE / TARGETS / CAMERA / STATS）と、カメラモード（FPS/Free/Orbit）、
 // グローバルトグル（回復 / 無敵 / 飛行 / 座標表示）を束ねる。
 
-type TabId = "weapon" | "stage" | "targets" | "camera" | "stats";
+type TabId = "assets" | "weapon" | "stage" | "targets" | "camera" | "stats";
 
 const TABS: Array<{ id: TabId; label: string }> = [
+  { id: "assets", label: "ASSETS" },
   { id: "weapon", label: "WEAPON" },
   { id: "stage", label: "STAGE" },
   { id: "targets", label: "TARGETS" },
@@ -39,7 +42,7 @@ export class DevRange implements DevApp {
   private panelRoot: HTMLDivElement | null = null;
   private tabButtons = new Map<TabId, HTMLButtonElement>();
   private panels!: Record<TabId, DevPanel>;
-  private activeTab: TabId = "weapon";
+  private activeTab: TabId = "assets";
 
   private cameraMode: CameraMode = "fps";
   private running = false;
@@ -57,6 +60,7 @@ export class DevRange implements DevApp {
     this.hud = new DevHUD(() => this.exit());
     this.injectStyle();
     this.panels = {
+      assets: new AssetsPanel(this),
       weapon: new WeaponPanel(this),
       stage: new StagePanel(this),
       targets: new TargetsPanel(this),
@@ -115,6 +119,17 @@ export class DevRange implements DevApp {
 
   getCameraMode(): CameraMode {
     return this.cameraMode;
+  }
+
+  // 射撃場へ切り替える：専用レンジを読み込み、的＋敵を出して FPS で撃てる状態にする。
+  enterRange(): void {
+    this.cameraMode = "fps";
+    this.devCamera.setMode("fps");
+    this.ctx.stage.loadCustom(buildRange, "range");
+    this.ctx.weapons.refreshShootables();
+    const sp = this.ctx.stage.playerSpawn;
+    this.ctx.player.respawn(sp.x, sp.y, sp.z);
+    (this.panels.targets as TargetsPanel).spawnPreset();
   }
 
   // ===== 独自レンダーループ =====

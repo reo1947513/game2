@@ -21,4 +21,6 @@ export interface DevApp {
   readonly ctx: DevCtx;
   setCameraMode(mode: CameraMode): void;
   getCameraMode(): CameraMode;
+  // 射撃場へ切り替える（専用レンジをロードし的・敵を出す）。
+  enterRange(): void;
 }

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { DevApp, DevPanel } from "../devTypes";
 import { DevTarget, DevTargetKind } from "../DevTarget";
+import { loadSurvivor, survivorSkins } from "../CharacterModels";
 
 // TARGETS タブ：的の配置（静止／往復／ランダム）と、被弾ダメージログ。
 // 的は WeaponSystem.enemyTargets に登録し、enemyHitHook で命中を記録する。
@@ -9,6 +10,8 @@ export class TargetsPanel implements DevPanel {
 
   private spawnKind: DevTargetKind = "static";
   private targets: DevTarget[] = [];
+  // 配置した実キャラモデル（試着）
+  private chars: THREE.Group[] = [];
   private log: Array<{ head: boolean; text: string }> = [];
 
   private countEl!: HTMLElement;
@@ -63,6 +66,28 @@ export class TargetsPanel implements DevPanel {
     this.logEl.className = "dr-log";
     this.element.appendChild(this.logEl);
 
+    // キャラモデル配置（実モデル試着・テスト環境）
+    const charHead = document.createElement("div");
+    charHead.className = "dr-cur";
+    charHead.style.marginTop = "8px";
+    charHead.textContent = "キャラモデル配置（実モデル試着）";
+    this.element.appendChild(charHead);
+    const charRow = document.createElement("div");
+    charRow.className = "dr-actions";
+    const skinSel = document.createElement("select");
+    skinSel.style.cssText =
+      "background:rgba(255,255,255,0.06);color:#fff;border:1px solid rgba(255,255,255,0.2);" +
+      "border-radius:4px;padding:3px 6px;font-size:12px;max-width:200px;";
+    for (const s of survivorSkins()) {
+      const opt = document.createElement("option");
+      opt.value = s.path;
+      opt.textContent = s.name;
+      skinSel.appendChild(opt);
+    }
+    charRow.appendChild(skinSel);
+    charRow.appendChild(this.btn("キャラを配置（視線の先）", () => this.addCharacter(skinSel.value)));
+    this.element.appendChild(charRow);
+
     this.refreshCount();
     this.refreshLog();
   }
@@ -113,6 +138,27 @@ export class TargetsPanel implements DevPanel {
     this.app.ctx.weapons.enemyHitHook = null;
   }
 
+  // 視線の先に実キャラモデルを配置する（指定 skin を適用）。
+  private addCharacter(skinPath: string): void {
+    const ctx = this.app.ctx;
+    const dir = new THREE.Vector3();
+    ctx.camera.getWorldDirection(dir);
+    const origin = new THREE.Vector3();
+    ctx.camera.getWorldPosition(origin);
+    this.ray.set(origin, dir);
+    const hits = this.ray.intersectObjects(ctx.stage.group.children, true);
+    const x = hits.length > 0 ? hits[0].point.x : origin.x + dir.x * 8;
+    const z = hits.length > 0 ? hits[0].point.z : origin.z + dir.z * 8;
+    void loadSurvivor(skinPath).then((grp) => {
+      if (!grp) return;
+      grp.position.x = x;
+      grp.position.z = z;
+      grp.lookAt(ctx.camera.position.x, grp.position.y, ctx.camera.position.z); // プレイヤーの方を向く
+      ctx.scene.add(grp);
+      this.chars.push(grp);
+    });
+  }
+
   private clearAll(): void {
     const ctx = this.app.ctx;
     for (const t of this.targets) {
@@ -121,6 +167,17 @@ export class TargetsPanel implements DevPanel {
       t.dispose(ctx.scene);
     }
     this.targets = [];
+    for (const g of this.chars) {
+      ctx.scene.remove(g);
+      g.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) for (const mm of mat) mm.dispose();
+        else if (mat && typeof (mat as THREE.Material).dispose === "function") (mat as THREE.Material).dispose();
+      });
+    }
+    this.chars = [];
     this.refreshCount();
   }
 

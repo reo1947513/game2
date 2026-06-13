@@ -5,6 +5,8 @@ import { WeaponKind } from "../../types";
 import { Stage, STAGE_LIST, StageId } from "../../Stage";
 import { EnemyUnit } from "../../Enemy";
 import { DevApp, DevPanel } from "../devTypes";
+import { loadSurvivor, survivorSkins } from "../CharacterModels";
+import { PreviewModal, type PreviewDetail } from "../PreviewModal";
 
 // ASSETS タブ：読み込み済みの3Dアセットをカテゴリ別にサムネイル一覧する。
 // - 取込武器モデル（gltf, src/dev/models/weapons）… GLTFLoader で読み込む実モデル
@@ -55,6 +57,7 @@ export class AssetsPanel implements DevPanel {
   element: HTMLElement;
   private generated = false;
   private env: THREE.Texture | null = null;
+  private modal = new PreviewModal();
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
@@ -93,7 +96,9 @@ export class AssetsPanel implements DevPanel {
         const url = await getUrl();
         const gltf = await loader.loadAsync(url);
         const u = this.renderObject(renderer, gltf.scene);
-        gGrid.appendChild(this.card(u, this.niceName(path)));
+        gGrid.appendChild(
+          this.card(u, this.niceName(path), "cover", () => this.previewGltf(getUrl, this.niceName(path)))
+        );
       } catch {
         // 読み込めないモデルはスキップ
       }
@@ -105,7 +110,9 @@ export class AssetsPanel implements DevPanel {
     for (const w of INGAME_WEAPONS) {
       const model = this.app.ctx.weapons.devWeaponModel(w.kind).clone();
       model.position.set(0, 0, 0);
-      wGrid.appendChild(this.card(this.renderObject(renderer, model), w.label));
+      wGrid.appendChild(
+        this.card(this.renderObject(renderer, model), w.label, "cover", () => this.previewIngame(w.kind, w.label))
+      );
     }
     this.element.appendChild(wGrid);
 
@@ -116,9 +123,41 @@ export class AssetsPanel implements DevPanel {
       const unit = new EnemyUnit(c.opts);
       const u = this.renderObject(renderer, unit.group);
       unit.dispose();
-      cGrid.appendChild(this.card(u, c.label));
+      cGrid.appendChild(
+        this.card(u, c.label, "cover", () =>
+          this.modal.open(async () => new EnemyUnit(c.opts).group, c.label, [
+            { label: "種別", value: "ゲーム内キャラ（EnemyUnit）" },
+            { label: "バリアント", value: c.label },
+          ])
+        )
+      );
     }
     this.element.appendChild(cGrid);
+
+    // キャラ実モデル（skin 適用・3D）：UVが一致するサバイバー系 skin をモデルに貼って3D描画。
+    this.element.appendChild(this.section("キャラ実モデル（skin適用・3D）"));
+    const cmGrid = this.grid();
+    this.element.appendChild(cmGrid);
+    for (const skin of survivorSkins()) {
+      try {
+        const m = await loadSurvivor(skin.path);
+        if (!m) continue;
+        cmGrid.appendChild(
+          this.card(this.renderObject(renderer, m), skin.name, "cover", () =>
+            this.modal.open(() => loadSurvivor(skin.path), skin.name, [
+              { label: "種別", value: "実モデル（FBX）" },
+              { label: "skin", value: skin.name },
+            ])
+          )
+        );
+        m.traverse((o) => {
+          const me = o as THREE.Mesh;
+          if (me.geometry) me.geometry.dispose();
+        });
+      } catch {
+        // 読み込めないモデル/skinはスキップ
+      }
+    }
 
     // テクスチャ（キャラ・BaseColor 画像をそのまま表示）
     this.element.appendChild(this.section("テクスチャ（キャラ・BaseColor）"));
@@ -239,6 +278,43 @@ export class AssetsPanel implements DevPanel {
     return path.split("/").pop()?.replace(/\.png$/i, "") ?? path;
   }
 
+  // クリック時のプレビュー：取込武器モデル(gltf)。
+  private previewGltf(getUrl: () => Promise<string>, name: string): void {
+    this.modal.open(
+      async () => {
+        const gltf = await new GLTFLoader().loadAsync(await getUrl());
+        return gltf.scene;
+      },
+      name,
+      [
+        { label: "種別", value: "武器モデル（取込）" },
+        { label: "形式", value: "glTF" },
+      ]
+    );
+  }
+
+  // クリック時のプレビュー：ゲーム内武器（箱モデル）＋武器スペック詳細。
+  private previewIngame(kind: WeaponKind, label: string): void {
+    this.modal.open(
+      async () => this.app.ctx.weapons.devWeaponModel(kind).clone(),
+      label,
+      this.weaponSpecDetails(kind)
+    );
+  }
+
+  private weaponSpecDetails(kind: WeaponKind): PreviewDetail[] {
+    const s = this.app.ctx.weapons.devSpec(kind);
+    return [
+      { label: "種別", value: "ゲーム内武器（箱）" },
+      { label: "ダメージ", value: String(s.damage) },
+      { label: "連射RPM", value: String(Math.round(60 / s.fireInterval)) },
+      { label: "マガジン", value: String(s.magSize) },
+      { label: "予備弾", value: String(s.reserveMax) },
+      { label: "リロード", value: s.reloadTime.toFixed(1) + "s" },
+      { label: "フルオート", value: s.automatic ? "ON" : "OFF" },
+    ];
+  }
+
   private section(title: string): HTMLElement {
     const h = document.createElement("div");
     h.className = "dr-cur";
@@ -253,11 +329,21 @@ export class AssetsPanel implements DevPanel {
     return g;
   }
 
-  private card(url: string, label: string, fit: "cover" | "contain" = "cover"): HTMLElement {
+  private card(
+    url: string,
+    label: string,
+    fit: "cover" | "contain" = "cover",
+    onClick?: () => void
+  ): HTMLElement {
     const card = document.createElement("div");
     card.style.cssText =
       "width:" + THUMB_W + "px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;" +
       "background:rgba(255,255,255,0.04);overflow:hidden;";
+    if (onClick) {
+      card.style.cursor = "pointer";
+      card.title = "クリックでプレビューと詳細";
+      card.onclick = onClick;
+    }
     const img = document.createElement("img");
     img.src = url;
     img.style.cssText = "display:block;width:100%;height:" + THUMB_H + "px;object-fit:" + fit + ";background:#0c0e12;";

@@ -22,6 +22,12 @@ const WEAPON_GLTF = import.meta.glob("../models/weapons/*.gltf", {
   import: "default",
 }) as Record<string, () => Promise<string>>;
 
+// 取込テクスチャ（キャラの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
+const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+
 const INGAME_WEAPONS: Array<{ kind: WeaponKind; label: string }> = [
   { kind: WeaponKind.Assault, label: "ASSAULT" },
   { kind: WeaponKind.Sniper, label: "SNIPER" },
@@ -107,6 +113,19 @@ export class AssetsPanel implements DevPanel {
       cGrid.appendChild(this.card(u, c.label));
     }
     this.element.appendChild(cGrid);
+
+    // テクスチャ（キャラ・BaseColor 画像をそのまま表示）
+    this.element.appendChild(this.section("テクスチャ（キャラ・BaseColor）"));
+    const tGrid = this.grid();
+    this.element.appendChild(tGrid);
+    for (const [path, getUrl] of Object.entries(CHARACTER_TEX)) {
+      try {
+        const url = await getUrl();
+        tGrid.appendChild(this.card(url, this.texName(path), "contain"));
+      } catch {
+        // 読み込めない画像はスキップ
+      }
+    }
 
     // ステージ（使い捨てシーンへ一時ロードして俯瞰描画→破棄）
     this.element.appendChild(this.section("ステージ"));
@@ -196,6 +215,11 @@ export class AssetsPanel implements DevPanel {
     return base.replace(/^scifi_ar_/i, "SciFi AR ").replace(/_/g, " ");
   }
 
+  // テクスチャのカード名（ファイル名から拡張子を除く）。
+  private texName(path: string): string {
+    return path.split("/").pop()?.replace(/\.png$/i, "") ?? path;
+  }
+
   private section(title: string): HTMLElement {
     const h = document.createElement("div");
     h.className = "dr-cur";
@@ -210,14 +234,14 @@ export class AssetsPanel implements DevPanel {
     return g;
   }
 
-  private card(url: string, label: string): HTMLElement {
+  private card(url: string, label: string, fit: "cover" | "contain" = "cover"): HTMLElement {
     const card = document.createElement("div");
     card.style.cssText =
       "width:" + THUMB_W + "px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;" +
       "background:rgba(255,255,255,0.04);overflow:hidden;";
     const img = document.createElement("img");
     img.src = url;
-    img.style.cssText = "display:block;width:100%;height:" + THUMB_H + "px;object-fit:cover;background:#0c0e12;";
+    img.style.cssText = "display:block;width:100%;height:" + THUMB_H + "px;object-fit:" + fit + ";background:#0c0e12;";
     const cap = document.createElement("div");
     cap.textContent = label;
     cap.style.cssText = "padding:4px 8px;font-size:12px;color:#cdd6e0;";

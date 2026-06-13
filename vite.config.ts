@@ -10,8 +10,18 @@ function excludeDevAssets(): Plugin {
     name: "exclude-dev-assets",
     generateBundle(_options, bundle) {
       if (keepDev) return;
-      for (const key of Object.keys(bundle)) {
-        if (/\.(gltf|glb)$/i.test(key)) delete bundle[key];
+      for (const [key, chunk] of Object.entries(bundle)) {
+        if (chunk.type !== "asset") continue;
+        // src/dev/ 由来のアセット（gltf モデル・テクスチャ等）を本番出力から除外する。
+        const oa = chunk as unknown as { originalFileNames?: string[]; originalFileName?: string | null };
+        const origins =
+          oa.originalFileNames && oa.originalFileNames.length
+            ? oa.originalFileNames
+            : oa.originalFileName
+              ? [oa.originalFileName]
+              : [];
+        const fromDev = origins.some((p) => p.replace(/\\/g, "/").includes("src/dev/"));
+        if (fromDev || /\.(gltf|glb)$/i.test(key)) delete bundle[key];
       }
     },
   };

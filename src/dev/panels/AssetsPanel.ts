@@ -7,6 +7,7 @@ import { EnemyUnit } from "../../Enemy";
 import { DevApp, DevPanel } from "../devTypes";
 import { loadSurvivor, survivorSkins } from "../CharacterModels";
 import { PreviewModal, type PreviewDetail } from "../PreviewModal";
+import { loadModel } from "../ModelLoader";
 
 // ASSETS タブ：読み込み済みの3Dアセットをカテゴリ別にサムネイル一覧する。
 // - 取込武器モデル（gltf, src/dev/models/weapons）… GLTFLoader で読み込む実モデル
@@ -32,6 +33,20 @@ const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
 
 // 取込テクスチャ（ステージの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
 const STAGE_TEX = import.meta.glob("../textures/stages/*.png", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+
+// 取込モデル（モンスター=gltf、プロップ=木/室内 fbx、人体=fbx）。遅延 glob（本番除外のため必須）。
+const MONSTERS = import.meta.glob("../models/monsters/*.{gltf,glb}", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+const PROPS = import.meta.glob("../models/props/*.{fbx,gltf,glb,obj}", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+const MAN_MODEL = import.meta.glob("../models/characters/man.fbx", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
@@ -159,6 +174,14 @@ export class AssetsPanel implements DevPanel {
       }
     }
 
+    // 人体（実モデル）：Man Animated に 素体テクスチャを適用
+    this.element.appendChild(this.section("人体（実モデル）"));
+    await this.buildModelGrid(renderer, MAN_MODEL, this.texLoaderByName("素体_明るい肌"));
+
+    // モンスター（実モデル＋共有アトラス）
+    this.element.appendChild(this.section("モンスター（実モデル）"));
+    await this.buildModelGrid(renderer, MONSTERS, this.texLoaderByName("モンスター_アトラス"));
+
     // テクスチャ（キャラ・BaseColor 画像をそのまま表示）
     this.element.appendChild(this.section("テクスチャ（キャラ・BaseColor）"));
     const tGrid = this.grid();
@@ -201,6 +224,10 @@ export class AssetsPanel implements DevPanel {
         // 読み込めない画像はスキップ
       }
     }
+
+    // プロップ（木・室内などの実モデル）
+    this.element.appendChild(this.section("プロップ（木・室内・実モデル）"));
+    await this.buildModelGrid(renderer, PROPS, null);
 
     if (this.env) {
       this.env.dispose();
@@ -276,6 +303,70 @@ export class AssetsPanel implements DevPanel {
   // テクスチャのカード名（ファイル名から拡張子を除く）。
   private texName(path: string): string {
     return path.split("/").pop()?.replace(/\.png$/i, "") ?? path;
+  }
+
+  private modelExt(path: string): string {
+    return (path.split(".").pop() ?? "").toLowerCase();
+  }
+
+  private modelName(path: string): string {
+    return (path.split("/").pop() ?? path).replace(/\.(gltf|glb|fbx|obj)$/i, "");
+  }
+
+  // 取込テクスチャからファイル名に sub を含むものの URL ローダーを返す。
+  private texLoaderByName(sub: string): (() => Promise<string>) | null {
+    const k = Object.keys(CHARACTER_TEX).find((p) => (p.split("/").pop() ?? "").includes(sub));
+    return k ? CHARACTER_TEX[k] : null;
+  }
+
+  // モデルを読み込み、texLoader があれば全メッシュにそのテクスチャを map 適用して返す。
+  private async loadAndTex(
+    getUrl: () => Promise<string>,
+    ext: string,
+    texLoader: (() => Promise<string>) | null
+  ): Promise<THREE.Object3D | null> {
+    const obj = await loadModel(await getUrl(), ext);
+    if (obj && texLoader) {
+      const tex = await new THREE.TextureLoader().loadAsync(await texLoader());
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = false;
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0.0 });
+      });
+    }
+    return obj;
+  }
+
+  // モデル群を 3D サムネイル化して並べる（クリックでプレビュー）。texLoader 指定時はテクスチャ適用。
+  private async buildModelGrid(
+    renderer: THREE.WebGLRenderer,
+    models: Record<string, () => Promise<string>>,
+    texLoader: (() => Promise<string>) | null
+  ): Promise<void> {
+    const grid = this.grid();
+    this.element.appendChild(grid);
+    for (const [path, getUrl] of Object.entries(models)) {
+      try {
+        const obj = await this.loadAndTex(getUrl, this.modelExt(path), texLoader);
+        if (!obj) continue;
+        const name = this.modelName(path);
+        const ext = this.modelExt(path);
+        grid.appendChild(
+          this.card(this.renderObject(renderer, obj), name, "cover", () =>
+            this.modal.open(() => this.loadAndTex(getUrl, ext, texLoader), name, [
+              { label: "形式", value: ext.toUpperCase() },
+            ])
+          )
+        );
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+        });
+      } catch {
+        // 読み込めないモデルはスキップ
+      }
+    }
   }
 
   // クリック時のプレビュー：取込武器モデル(gltf)。

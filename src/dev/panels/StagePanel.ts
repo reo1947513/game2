@@ -2,6 +2,12 @@ import * as THREE from "three";
 import { STAGE_LIST, StageId } from "../../Stage";
 import { DevApp, DevPanel } from "../devTypes";
 
+// 取込ステージテクスチャ（BaseColor）。遅延 glob（本番除外のため必須）。
+const STAGE_TEX = import.meta.glob("../textures/stages/*.png", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+
 // STAGE タブ：ステージ切替、テクスチャ／マテリアル確認、コライダー可視化、照明調整。
 export class StagePanel implements DevPanel {
   element: HTMLElement;
@@ -14,6 +20,9 @@ export class StagePanel implements DevPanel {
   private colliderGroup: THREE.Group | null = null;
   // 各ライトの基準 intensity（照明スライダーの基準値）
   private lightBase = new Map<THREE.Light, number>();
+  // テクスチャ試着：差し替えたマテリアルの原状（復帰用）と、適用したクローンテクスチャ
+  private savedMats = new Map<THREE.MeshStandardMaterial, { map: THREE.Texture | null; color: number }>();
+  private appliedTextures: THREE.Texture[] = [];
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
@@ -121,10 +130,14 @@ export class StagePanel implements DevPanel {
 
     // マテリアル一覧
     this.element.appendChild(this.buildMaterials());
+
+    // テクスチャ試着（テスト環境：現在のステージに貼る）
+    this.element.appendChild(this.buildTextureTryOn());
   }
 
   private loadStage(id: StageId): void {
     const ctx = this.app.ctx;
+    this.resetTexState(); // 旧ステージのテクスチャ試着状態を破棄（マテリアルごと作り直されるため）
     if (this.colliderOn) this.applyColliders(false); // 旧コライダーのヘルパーを除去
     ctx.stage.load(id);
     ctx.weapons.refreshShootables();
@@ -236,6 +249,91 @@ export class StagePanel implements DevPanel {
     }
     wrap.appendChild(list);
     return wrap;
+  }
+
+  // テクスチャ試着UI：選択した取込テクスチャを現在のステージへ貼る／解除する。
+  private buildTextureTryOn(): HTMLElement {
+    const wrap = document.createElement("div");
+    const head = document.createElement("div");
+    head.className = "dr-cur";
+    head.style.marginTop = "8px";
+    head.textContent = "テクスチャ試着（現在のステージに貼る）";
+    wrap.appendChild(head);
+
+    const row = document.createElement("div");
+    row.className = "dr-actions";
+    const sel = document.createElement("select");
+    sel.style.cssText =
+      "background:rgba(255,255,255,0.06);color:#fff;border:1px solid rgba(255,255,255,0.2);" +
+      "border-radius:4px;padding:3px 6px;font-size:12px;max-width:240px;";
+    for (const path of Object.keys(STAGE_TEX)) {
+      const opt = document.createElement("option");
+      opt.value = path;
+      opt.textContent = path.split("/").pop()?.replace(/\.png$/i, "") ?? path;
+      sel.appendChild(opt);
+    }
+    row.appendChild(sel);
+    row.appendChild(
+      this.btn("適用", () => {
+        const loader = STAGE_TEX[sel.value];
+        if (loader) void loader().then((url) => this.applyStageTexture(url));
+      })
+    );
+    row.appendChild(this.btn("テクスチャ解除", () => this.clearStageTexture()));
+    wrap.appendChild(row);
+
+    const hint = document.createElement("div");
+    hint.className = "dr-info";
+    hint.textContent = "現在のステージの面に繰り返し貼って確認します（テスト環境のみ・面サイズで概算タイリング）。";
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  // 選択テクスチャを現在のステージの全 MeshStandardMaterial へ貼る（面サイズで repeat 概算）。
+  private async applyStageTexture(url: string): Promise<void> {
+    const tex = await new THREE.TextureLoader().loadAsync(url);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const box = new THREE.Box3();
+    this.app.ctx.stage.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (!mat || !mat.isMeshStandardMaterial) return;
+      if (!this.savedMats.has(mat)) this.savedMats.set(mat, { map: mat.map, color: mat.color.getHex() });
+      const t = tex.clone();
+      t.needsUpdate = true;
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = THREE.RepeatWrapping;
+      box.setFromObject(mesh);
+      const sx = box.max.x - box.min.x;
+      const sy = box.max.y - box.min.y;
+      const sz = box.max.z - box.min.z;
+      const rep = Math.max(1, Math.min(12, Math.round(Math.max(sx, sy, sz) / 4)));
+      t.repeat.set(rep, rep);
+      this.appliedTextures.push(t);
+      mat.map = t;
+      mat.color.setHex(0xffffff); // map をそのまま見せるため白に
+      mat.needsUpdate = true;
+    });
+  }
+
+  // テクスチャ試着を解除し、元のマテリアル状態へ戻す。
+  clearStageTexture(): void {
+    for (const [mat, orig] of this.savedMats) {
+      mat.map = orig.map;
+      mat.color.setHex(orig.color);
+      mat.needsUpdate = true;
+    }
+    this.savedMats.clear();
+    for (const t of this.appliedTextures) t.dispose();
+    this.appliedTextures = [];
+  }
+
+  // ステージ切替時：旧マテリアルは破棄されるので、復帰せず状態だけ捨てる。
+  private resetTexState(): void {
+    this.savedMats.clear();
+    for (const t of this.appliedTextures) t.dispose();
+    this.appliedTextures = [];
   }
 
   private btn(text: string, onClick: () => void): HTMLButtonElement {

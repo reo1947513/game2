@@ -91,7 +91,8 @@ export class DevRange implements DevApp {
   stop(): void {
     this.running = false;
     (this.panels.targets as TargetsPanel).dispose(); // 的削除＋命中フック解除
-    (this.panels.weapon as WeaponPanel).resetAll(); // 武器スペックを既定へ復帰
+    (this.panels.weapon as WeaponPanel).resetAll(); // 武器スペックを既定へ復帰＋実モデル解除
+    (this.panels.stage as StagePanel).clearStageTexture(); // ステージのテクスチャ試着を解除
     this.ctx.player.setFlyMode(false);
     this.ctx.health.setInvincible(false);
     this.ctx.input.setAdsActive(false);

@@ -45,6 +45,7 @@ export class DevRange implements DevApp {
   private activeTab: TabId = "assets";
 
   private cameraMode: CameraMode = "fps";
+  private fullscreen = true; // パネル全画面（タブを切り替えても維持する）
   private running = false;
   private onExit: (() => void) | null = null;
   private canvasClick: (() => void) | null = null;
@@ -193,6 +194,21 @@ export class DevRange implements DevApp {
       bar.appendChild(b);
     }
 
+    // 全画面トグル（タブを切り替えても全画面表示を維持する）
+    const fsBtn = document.createElement("button");
+    fsBtn.className = "dr-tgl" + (this.fullscreen ? " on" : "");
+    const fsLabel = (): void => {
+      fsBtn.textContent = this.fullscreen ? "▽ 通常表示" : "△ 全画面";
+    };
+    fsLabel();
+    fsBtn.onclick = () => {
+      this.fullscreen = !this.fullscreen;
+      fsBtn.classList.toggle("on", this.fullscreen);
+      fsLabel();
+      this.applyFullscreen();
+    };
+    bar.appendChild(fsBtn);
+
     bar.appendChild(this.buildGlobalToggles());
 
     const content = document.createElement("div");
@@ -204,6 +220,12 @@ export class DevRange implements DevApp {
 
     this.panelRoot = root;
     this.content = content;
+    this.applyFullscreen();
+  }
+
+  // 全画面表示の適用（this.fullscreen に従う。タブ切替では変えない）。
+  private applyFullscreen(): void {
+    this.panelRoot?.classList.toggle("dr-full", this.fullscreen);
   }
 
   // グローバルトグル（回復 / 無敵 / 飛行 / 座標表示）をバー右側へ。
@@ -263,8 +285,6 @@ export class DevRange implements DevApp {
   }
 
   private mountTab(id: TabId): void {
-    // ASSETS タブのときだけパネルを全画面化する
-    this.panelRoot?.classList.toggle("dr-full", id === "assets");
     this.content.innerHTML = "";
     const panel = this.panels[id];
     this.content.appendChild(panel.element);

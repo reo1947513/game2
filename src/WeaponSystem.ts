@@ -709,4 +709,28 @@ export class WeaponSystem {
   devWeaponModel(kind: WeaponKind): THREE.Group {
     return this.weapons.get(kind)!.model;
   }
+
+  // DEV RANGE 用（テスト環境）：手元ビューモデルを実モデルへ差し替える。null で箱モデルへ復帰。
+  // 実モデルは武器グループの子として追加するので、既存の反動・ADS アニメーションへ追従する。
+  devSetViewmodel(kind: WeaponKind, obj: THREE.Object3D | null): void {
+    const w = this.weapons.get(kind);
+    if (!w) return;
+    const old = w.model.getObjectByName("__devVM");
+    if (old) {
+      w.model.remove(old);
+      old.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+      });
+    }
+    const useCustom = !!obj;
+    for (const c of w.model.children) {
+      if (c === w.muzzle || c.name === "__devVM") continue;
+      c.visible = !useCustom; // 実モデル装着中は箱メッシュを隠す（マズルは残す）
+    }
+    if (obj) {
+      obj.name = "__devVM";
+      w.model.add(obj);
+    }
+  }
 }

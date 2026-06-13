@@ -1,5 +1,7 @@
+import * as THREE from "three";
 import { WeaponKind, WeaponSpec } from "../../types";
 import { DevApp, DevPanel } from "../devTypes";
+import { loadWeaponModel } from "../WeaponModels";
 
 // WEAPON タブ：武器の切替と、選択中武器のパラメータを即時編集する。
 // 編集はセッション中のみ有効（リロードで戻る）。「JSONコピー」で本番貼り付け用に書き出せる。
@@ -36,6 +38,8 @@ export class WeaponPanel implements DevPanel {
   element: HTMLElement;
   private defaults = new Map<WeaponKind, WeaponSpec>();
   private lastKind: WeaponKind | null = null;
+  // 実モデル試着で装着中のモデル（武器種ごと）
+  private vmModels = new Map<WeaponKind, THREE.Group>();
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
@@ -120,6 +124,107 @@ export class WeaponPanel implements DevPanel {
     actions.appendChild(copy);
 
     this.element.appendChild(actions);
+
+    // 実モデル試着（テスト環境）
+    this.element.appendChild(this.buildViewmodel(kind));
+  }
+
+  // 実モデル試着：手元の武器を取込モデルへ差し替えて見る（テスト環境のみ）。
+  private buildViewmodel(kind: WeaponKind): HTMLElement {
+    const wrap = document.createElement("div");
+    const head = document.createElement("div");
+    head.className = "dr-cur";
+    head.style.marginTop = "10px";
+    head.textContent = "実モデル試着（テスト環境・手元表示）";
+    wrap.appendChild(head);
+
+    const model = this.vmModels.get(kind) ?? null;
+    const actions = document.createElement("div");
+    actions.className = "dr-actions";
+    const toggle = this.btn(model ? "実モデルを解除（箱に戻す）" : "実モデルを装着", () => {
+      if (this.vmModels.has(kind)) {
+        this.app.ctx.weapons.devSetViewmodel(kind, null);
+        this.vmModels.delete(kind);
+        this.render();
+        return;
+      }
+      toggle.textContent = "読込中…";
+      void loadWeaponModel(kind).then((m) => {
+        if (!m) {
+          toggle.textContent = "モデルを読み込めません";
+          return;
+        }
+        m.position.set(0, -0.05, -0.25);
+        m.userData.baseScale = m.scale.x;
+        this.app.ctx.weapons.devSetViewmodel(kind, m);
+        this.vmModels.set(kind, m);
+        this.render();
+      });
+    });
+    actions.appendChild(toggle);
+    wrap.appendChild(actions);
+
+    if (model) {
+      const base = (model.userData.baseScale as number) || model.scale.x || 1;
+      const grid = document.createElement("div");
+      grid.className = "dr-grid";
+      grid.appendChild(this.vmSlider("位置X", -0.6, 0.6, 0.01, model.position.x, (v) => (model.position.x = v)));
+      grid.appendChild(this.vmSlider("位置Y", -0.6, 0.6, 0.01, model.position.y, (v) => (model.position.y = v)));
+      grid.appendChild(this.vmSlider("位置Z", -1.0, 0.3, 0.01, model.position.z, (v) => (model.position.z = v)));
+      grid.appendChild(
+        this.vmSlider("スケール", 0.2, 3, 0.05, model.scale.x / base, (v) => model.scale.setScalar(base * v))
+      );
+      grid.appendChild(this.vmSlider("回転X", -3.14, 3.14, 0.02, model.rotation.x, (v) => (model.rotation.x = v)));
+      grid.appendChild(this.vmSlider("回転Y", -3.14, 3.14, 0.02, model.rotation.y, (v) => (model.rotation.y = v)));
+      grid.appendChild(this.vmSlider("回転Z", -3.14, 3.14, 0.02, model.rotation.z, (v) => (model.rotation.z = v)));
+      wrap.appendChild(grid);
+
+      const hint = document.createElement("div");
+      hint.className = "dr-info";
+      hint.textContent = "スライダーで手元の位置・向き・大きさを合わせられます（セッション内のみ）。";
+      wrap.appendChild(hint);
+    }
+    return wrap;
+  }
+
+  // ラベル＋スライダー＋数値（汎用、変更をコールバックで反映）。
+  private vmSlider(
+    label: string,
+    min: number,
+    max: number,
+    step: number,
+    value: number,
+    onChange: (v: number) => void
+  ): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "dr-row";
+    const lab = document.createElement("label");
+    lab.textContent = label;
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = String(min);
+    range.max = String(max);
+    range.step = String(step);
+    range.value = String(value);
+    const num = document.createElement("input");
+    num.type = "number";
+    num.min = String(min);
+    num.max = String(max);
+    num.step = String(step);
+    num.value = String(value);
+    const apply = (raw: number, from: "range" | "num"): void => {
+      if (!isFinite(raw)) return;
+      const v = Math.max(min, Math.min(max, raw));
+      onChange(v);
+      if (from !== "range") range.value = String(v);
+      if (from !== "num") num.value = String(v);
+    };
+    range.oninput = () => apply(parseFloat(range.value), "range");
+    num.oninput = () => apply(parseFloat(num.value), "num");
+    row.appendChild(lab);
+    row.appendChild(range);
+    row.appendChild(num);
+    return row;
   }
 
   // RPM 行：rpm = round(60 / fireInterval)。編集で fireInterval = 60 / rpm を書き戻す。
@@ -202,9 +307,11 @@ export class WeaponPanel implements DevPanel {
     return row;
   }
 
-  // DEV RANGE 終了時：全武器スペックを既定へ復帰。
+  // DEV RANGE 終了時：全武器スペックを既定へ復帰し、実モデル試着も解除して箱モデルへ戻す。
   resetAll(): void {
     for (const k of ORDER) this.resetSpec(k);
+    for (const k of this.vmModels.keys()) this.app.ctx.weapons.devSetViewmodel(k, null);
+    this.vmModels.clear();
   }
 
   private resetSpec(kind: WeaponKind): void {

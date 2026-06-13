@@ -1,15 +1,28 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { WeaponKind } from "../../types";
 import { Stage, STAGE_LIST, StageId } from "../../Stage";
 import { EnemyUnit } from "../../Enemy";
 import { DevApp, DevPanel } from "../devTypes";
 
-// ASSETS タブ：読み込み済みの3Dアセット（武器・キャラクター・ステージ）を
-// オフスクリーンで描画したサムネイルでカテゴリ別に一覧する。
-// このゲームは画像テクスチャを使わない（全て単色マテリアル）ため、テクスチャではなく
-// 実モデルのプレビューを表示する。サムネイルは初回表示時に一括生成してキャッシュする。
+// ASSETS タブ：読み込み済みの3Dアセットをカテゴリ別にサムネイル一覧する。
+// - 取込武器モデル（gltf, src/dev/models/weapons）… GLTFLoader で読み込む実モデル
+// - ゲーム内武器（箱モデル）／キャラクター（EnemyUnit）／ステージ … 既存の実モデル
+// サムネイルはオフスクリーン WebGLRenderer で描画し toDataURL でキャッシュする。
+// 金属マテリアルが真っ黒にならないよう RoomEnvironment の環境マップを与える。
+// 本ゲームは画像テクスチャを使わないため、これはテクスチャではなくモデルのプレビュー。
+// AssetsPanel は dev でのみ動的 import されるため、取込モデルも本番バンドルには含まれない。
 
-const WEAPONS: Array<{ kind: WeaponKind; label: string }> = [
+// 取込武器モデル（gltf）を URL として列挙（Vite glob）。
+// eager にすると参照コードがツリーシェイクされても本番 dist にアセットが出力されてしまうため、
+// 必ず遅延 glob（動的 import）にする。これで dev チャンクが除去される本番には gltf が一切出ない。
+const WEAPON_GLTF = import.meta.glob("../models/weapons/*.gltf", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+
+const INGAME_WEAPONS: Array<{ kind: WeaponKind; label: string }> = [
   { kind: WeaponKind.Assault, label: "ASSAULT" },
   { kind: WeaponKind.Sniper, label: "SNIPER" },
   { kind: WeaponKind.Shotgun, label: "SHOTGUN" },
@@ -29,6 +42,7 @@ const THUMB_H = 132;
 export class AssetsPanel implements DevPanel {
   element: HTMLElement;
   private generated = false;
+  private env: THREE.Texture | null = null;
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
@@ -41,11 +55,10 @@ export class AssetsPanel implements DevPanel {
   onShow(): void {
     if (this.generated) return;
     this.generated = true;
-    // レンダラ生成〜描画はやや重いので次フレームに回し、初回マウントの操作感を保つ。
-    window.setTimeout(() => this.build(), 0);
+    window.setTimeout(() => void this.build(), 0);
   }
 
-  private build(): void {
+  private async build(): Promise<void> {
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
@@ -54,14 +67,33 @@ export class AssetsPanel implements DevPanel {
     renderer.setPixelRatio(1);
     renderer.setSize(THUMB_W, THUMB_H);
 
-    // 武器
-    this.element.appendChild(this.section("武器"));
+    // 金属マテリアル（武器など）は環境マップが無いと真っ黒になるため、簡易環境光を生成する。
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    // 取込武器モデル（gltf）— 非同期で読み込みつつ並べる
+    this.element.appendChild(this.section("武器モデル（取込・gltf）"));
+    const gGrid = this.grid();
+    this.element.appendChild(gGrid);
+    const loader = new GLTFLoader();
+    for (const [path, getUrl] of Object.entries(WEAPON_GLTF)) {
+      try {
+        const url = await getUrl();
+        const gltf = await loader.loadAsync(url);
+        const u = this.renderObject(renderer, gltf.scene);
+        gGrid.appendChild(this.card(u, this.niceName(path)));
+      } catch {
+        // 読み込めないモデルはスキップ
+      }
+    }
+
+    // ゲーム内武器（箱モデル）
+    this.element.appendChild(this.section("ゲーム内武器"));
     const wGrid = this.grid();
-    for (const w of WEAPONS) {
+    for (const w of INGAME_WEAPONS) {
       const model = this.app.ctx.weapons.devWeaponModel(w.kind).clone();
       model.position.set(0, 0, 0);
-      const url = this.renderObject(renderer, model);
-      wGrid.appendChild(this.card(url, w.label));
+      wGrid.appendChild(this.card(this.renderObject(renderer, model), w.label));
     }
     this.element.appendChild(wGrid);
 
@@ -70,9 +102,9 @@ export class AssetsPanel implements DevPanel {
     const cGrid = this.grid();
     for (const c of CHARACTERS) {
       const unit = new EnemyUnit(c.opts);
-      const url = this.renderObject(renderer, unit.group);
+      const u = this.renderObject(renderer, unit.group);
       unit.dispose();
-      cGrid.appendChild(this.card(url, c.label));
+      cGrid.appendChild(this.card(u, c.label));
     }
     this.element.appendChild(cGrid);
 
@@ -80,8 +112,7 @@ export class AssetsPanel implements DevPanel {
     this.element.appendChild(this.section("ステージ"));
     const sGrid = this.grid();
     for (const s of STAGE_LIST) {
-      const url = this.renderStage(renderer, s.id);
-      const cardEl = this.card(url, s.label);
+      const cardEl = this.card(this.renderStage(renderer, s.id), s.label);
       cardEl.style.cursor = "pointer";
       cardEl.title = "クリックで確認用ロード";
       cardEl.onclick = () => {
@@ -94,14 +125,20 @@ export class AssetsPanel implements DevPanel {
     }
     this.element.appendChild(sGrid);
 
+    if (this.env) {
+      this.env.dispose();
+      this.env = null;
+    }
+    pmrem.dispose();
     renderer.dispose(); // WebGL コンテキストを解放
   }
 
   // 1オブジェクトを単独シーンで描画し dataURL を返す。
   private renderObject(renderer: THREE.WebGLRenderer, obj: THREE.Object3D): string {
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.3);
+    scene.environment = this.env;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(3, 5, 4);
     scene.add(dir);
     scene.add(obj);
@@ -115,6 +152,7 @@ export class AssetsPanel implements DevPanel {
   // ステージを使い捨てシーンへ一時ロードし俯瞰描画→破棄して dataURL を返す。
   private renderStage(renderer: THREE.WebGLRenderer, id: StageId): string {
     const scene = new THREE.Scene();
+    scene.environment = this.env;
     const stage = new Stage(scene, id);
     const cam = new THREE.PerspectiveCamera(50, THUMB_W / THUMB_H, 0.1, 1000);
     const box = new THREE.Box3().setFromObject(stage.group);
@@ -135,7 +173,7 @@ export class AssetsPanel implements DevPanel {
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const cam = new THREE.PerspectiveCamera(40, THUMB_W / THUMB_H, 0.01, 1000);
+    const cam = new THREE.PerspectiveCamera(40, THUMB_W / THUMB_H, 0.01, 5000);
     const dist = maxDim * 2.3;
     cam.position.set(center.x + dist * 0.7, center.y + dist * 0.5, center.z + dist * 0.9);
     cam.lookAt(center);
@@ -150,6 +188,12 @@ export class AssetsPanel implements DevPanel {
       if (Array.isArray(mat)) for (const m of mat) m.dispose();
       else if (mat) (mat as THREE.Material).dispose();
     });
+  }
+
+  // パスからカード名を作る（scifi_ar_1.gltf → "SciFi AR 1"）。
+  private niceName(path: string): string {
+    const base = path.split("/").pop()?.replace(/\.gltf$/i, "") ?? path;
+    return base.replace(/^scifi_ar_/i, "SciFi AR ").replace(/_/g, " ");
   }
 
   private section(title: string): HTMLElement {

@@ -263,6 +263,8 @@ export class DevRange implements DevApp {
   }
 
   private mountTab(id: TabId): void {
+    // ASSETS タブのときだけパネルを全画面化する
+    this.panelRoot?.classList.toggle("dr-full", id === "assets");
     this.content.innerHTML = "";
     const panel = this.panels[id];
     this.content.appendChild(panel.element);
@@ -275,9 +277,13 @@ export class DevRange implements DevApp {
     style.id = "dev-range-style";
     style.textContent = `
       #dev-range{position:fixed;left:0;right:0;bottom:0;z-index:9999;
+        display:flex;flex-direction:column;
         font-family:system-ui,-apple-system,sans-serif;color:#e8eaed;
         background:rgba(8,10,14,0.92);border-top:2px solid #ffb83c;
         box-shadow:0 -6px 24px rgba(0,0,0,0.6);pointer-events:auto;}
+      /* ASSETS タブは画面いっぱいに（DEV RANGE バッジ行のすぐ下から下端まで） */
+      #dev-range.dr-full{top:46px;background:rgba(8,10,14,0.98);}
+      #dev-range.dr-full .dr-content{height:auto;flex:1 1 auto;min-height:0;}
       #dev-range .dr-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
         padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.08);}
       #dev-range .dr-tab{padding:5px 14px;font-size:13px;font-weight:700;

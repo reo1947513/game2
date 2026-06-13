@@ -9,40 +9,20 @@ import { loadSurvivor, survivorSkins } from "../CharacterModels";
 import { PreviewModal, type PreviewDetail } from "../PreviewModal";
 import { loadModel } from "../ModelLoader";
 
-// ASSETS タブ：読み込み済みの3Dアセットをカテゴリ別にサムネイル一覧する。
-// - 取込武器モデル（gltf, src/dev/models/weapons）… GLTFLoader で読み込む実モデル
-// - ゲーム内武器（箱モデル）／キャラクター（EnemyUnit）／ステージ … 既存の実モデル
-// サムネイルはオフスクリーン WebGLRenderer で描画し toDataURL でキャッシュする。
-// 金属マテリアルが真っ黒にならないよう RoomEnvironment の環境マップを与える。
-// 本ゲームは画像テクスチャを使わないため、これはテクスチャではなくモデルのプレビュー。
-// AssetsPanel は dev でのみ動的 import されるため、取込モデルも本番バンドルには含まれない。
+// ASSETS タブ：取込アセットをカテゴリ別に3Dサムネイル一覧する。
+// モデルが多数（武器だけで100以上）になるため、サムネイルは IntersectionObserver による
+// 遅延生成（画面内に入ったものだけ描画）。永続オフスクリーン WebGLRenderer を1つ使い回す。
+// クリックで PreviewModal（自動回転3D＋詳細）。本ゲームは画像テクスチャ未使用＝実モデルのプレビュー。
+// 本パネルは dev でのみ動的 import されるため、取込モデルも本番バンドルには含まれない。
 
-// 取込武器モデル（gltf）を URL として列挙（Vite glob）。
-// eager にすると参照コードがツリーシェイクされても本番 dist にアセットが出力されてしまうため、
-// 必ず遅延 glob（動的 import）にする。これで dev チャンクが除去される本番には gltf が一切出ない。
 const WEAPON_GLTF = import.meta.glob("../models/weapons/*.gltf", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
-// 武器の実モデル（リアル系銃 fbx・FPS銃 obj）。別種の銃モデル。
 const WEAPON_OTHER = import.meta.glob("../models/weapons/*.{fbx,obj}", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
-
-// 取込テクスチャ（キャラの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
-const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
-  query: "?url",
-  import: "default",
-}) as Record<string, () => Promise<string>>;
-
-// 取込テクスチャ（ステージの BaseColor 画像、512px縮小）。遅延 glob（本番除外のため必須）。
-const STAGE_TEX = import.meta.glob("../textures/stages/*.png", {
-  query: "?url",
-  import: "default",
-}) as Record<string, () => Promise<string>>;
-
-// 取込モデル（モンスター=gltf、プロップ=木/室内 fbx、人体=fbx）。遅延 glob（本番除外のため必須）。
 const MONSTERS = import.meta.glob("../models/monsters/*.{gltf,glb}", {
   query: "?url",
   import: "default",
@@ -55,8 +35,15 @@ const MAN_MODEL = import.meta.glob("../models/characters/man.fbx", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
-// キャラの実モデル全般（survivor/man/ranger/peasant）。skin→モデル対応に使う。
 const CHAR_MODELS = import.meta.glob("../models/characters/*.fbx", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+const CHARACTER_TEX = import.meta.glob("../textures/characters/*.png", {
+  query: "?url",
+  import: "default",
+}) as Record<string, () => Promise<string>>;
+const STAGE_TEX = import.meta.glob("../textures/stages/*.png", {
   query: "?url",
   import: "default",
 }) as Record<string, () => Promise<string>>;
@@ -80,187 +67,305 @@ const THUMB_H = 132;
 
 export class AssetsPanel implements DevPanel {
   element: HTMLElement;
-  private generated = false;
-  private env: THREE.Texture | null = null;
+  private built = false;
   private modal = new PreviewModal();
+
+  // 永続オフスクリーン描画（使い回す）
+  private renderer: THREE.WebGLRenderer | null = null;
+  private pmrem: THREE.PMREMGenerator | null = null;
+  private env: THREE.Texture | null = null;
+
+  // 遅延サムネイル生成
+  private observer: IntersectionObserver | null = null;
+  private lazy = new Map<Element, () => void>();
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
     const note = document.createElement("div");
     note.className = "dr-cur";
-    note.textContent = "読み込み済みアセット（このゲームは画像テクスチャ未使用＝実モデルのプレビュー）";
+    note.textContent = "読み込み済みアセット（実モデルのプレビュー・画面内に入った順にサムネ生成）";
     this.element.appendChild(note);
   }
 
   onShow(): void {
-    if (this.generated) return;
-    this.generated = true;
-    window.setTimeout(() => void this.build(), 0);
+    if (this.built) return;
+    this.built = true;
+    window.setTimeout(() => this.build(), 0);
   }
 
-  private async build(): Promise<void> {
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true,
-    });
-    renderer.setPixelRatio(1);
-    renderer.setSize(THUMB_W, THUMB_H);
+  private build(): void {
+    this.ensureRenderer();
+    this.ensureObserver();
 
-    // 金属マテリアル（武器など）は環境マップが無いと真っ黒になるため、簡易環境光を生成する。
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-
-    // 取込武器モデル（gltf）— 非同期で読み込みつつ並べる
-    this.element.appendChild(this.section("武器モデル（取込・gltf）"));
-    const gGrid = this.grid();
-    this.element.appendChild(gGrid);
-    const loader = new GLTFLoader();
+    // 武器（取込 gltf）
+    this.section("武器モデル（取込・gltf）");
+    const wg = this.grid();
     for (const [path, getUrl] of Object.entries(WEAPON_GLTF)) {
-      try {
-        const url = await getUrl();
-        const gltf = await loader.loadAsync(url);
-        const u = this.renderObject(renderer, gltf.scene);
-        gGrid.appendChild(
-          this.card(u, this.niceName(path), "cover", () => this.previewGltf(getUrl, this.niceName(path)))
-        );
-      } catch {
-        // 読み込めないモデルはスキップ
-      }
+      wg.appendChild(
+        this.modelCard(this.niceName(path), () => this.loadGltf(getUrl), [{ label: "形式", value: "glTF" }])
+      );
     }
 
-    // 武器の実モデル（リアル系 fbx・FPS銃 obj：別種の銃）
-    this.element.appendChild(this.section("武器モデル（取込・fbx/obj）"));
-    await this.buildModelGrid(renderer, WEAPON_OTHER, null);
+    // 武器（取込 fbx/obj：リアル系・FPS銃・Ultimate Gun Pack）
+    this.section("武器モデル（取込・fbx/obj）");
+    const wo = this.grid();
+    for (const [path, getUrl] of Object.entries(WEAPON_OTHER)) {
+      const ext = this.modelExt(path);
+      wo.appendChild(
+        this.modelCard(this.modelName(path), () => this.loadAny(getUrl, ext), [{ label: "形式", value: ext.toUpperCase() }])
+      );
+    }
 
     // ゲーム内武器（箱モデル）
-    this.element.appendChild(this.section("ゲーム内武器"));
-    const wGrid = this.grid();
+    this.section("ゲーム内武器");
+    const ig = this.grid();
     for (const w of INGAME_WEAPONS) {
-      const model = this.app.ctx.weapons.devWeaponModel(w.kind).clone();
-      // 非選択武器はモデルが visible=false のため、サムネ用に全て表示へ戻す。
-      model.visible = true;
-      model.traverse((o) => (o.visible = true));
-      model.position.set(0, 0, 0);
-      wGrid.appendChild(
-        this.card(this.renderObject(renderer, model), w.label, "cover", () => this.previewIngame(w.kind, w.label))
-      );
+      ig.appendChild(this.modelCard(w.label, () => this.cloneIngame(w.kind), this.weaponSpecDetails(w.kind)));
     }
-    this.element.appendChild(wGrid);
 
-    // キャラクター
-    this.element.appendChild(this.section("キャラクター"));
-    const cGrid = this.grid();
-    for (const c of CHARACTERS) {
-      const unit = new EnemyUnit(c.opts);
-      const u = this.renderObject(renderer, unit.group);
-      unit.dispose();
-      cGrid.appendChild(
-        this.card(u, c.label, "cover", () =>
-          this.modal.open(async () => new EnemyUnit(c.opts).group, c.label, [
-            { label: "種別", value: "ゲーム内キャラ（EnemyUnit）" },
-            { label: "バリアント", value: c.label },
-          ])
-        )
-      );
-    }
-    this.element.appendChild(cGrid);
-
-    // キャラ実モデル（skin 適用・3D）：UVが一致するサバイバー系 skin をモデルに貼って3D描画。
-    this.element.appendChild(this.section("キャラ実モデル（skin適用・3D）"));
-    const cmGrid = this.grid();
-    this.element.appendChild(cmGrid);
+    // キャラ実モデル（survivor＋skin）
+    this.section("キャラ実モデル（skin適用・3D）");
+    const cs = this.grid();
     for (const skin of survivorSkins()) {
-      try {
-        const m = await loadSurvivor(skin.path);
-        if (!m) continue;
-        cmGrid.appendChild(
-          this.card(this.renderObject(renderer, m), skin.name, "cover", () =>
-            this.modal.open(() => loadSurvivor(skin.path), skin.name, [
-              { label: "種別", value: "実モデル（FBX）" },
-              { label: "skin", value: skin.name },
-            ])
-          )
-        );
-        m.traverse((o) => {
-          const me = o as THREE.Mesh;
-          if (me.geometry) me.geometry.dispose();
-        });
-      } catch {
-        // 読み込めないモデル/skinはスキップ
-      }
+      cs.appendChild(
+        this.modelCard(skin.name, () => loadSurvivor(skin.path), [
+          { label: "種別", value: "実モデル（FBX）" },
+          { label: "skin", value: skin.name },
+        ])
+      );
     }
 
-    // 人体（実モデル）：Man Animated に 素体テクスチャを適用
-    this.element.appendChild(this.section("人体（実モデル）"));
-    await this.buildModelGrid(renderer, MAN_MODEL, this.texLoaderByName("素体_明るい肌"));
+    // 人体（実モデル）
+    this.section("人体（実モデル）");
+    const mg = this.grid();
+    const manSkin = this.texLoaderByName("素体_明るい肌");
+    for (const [path, getUrl] of Object.entries(MAN_MODEL)) {
+      mg.appendChild(
+        this.modelCard(this.modelName(path), () => this.loadAndTex(getUrl, "fbx", manSkin), [
+          { label: "種別", value: "人体（FBX）" },
+        ])
+      );
+    }
 
-    // モンスター（実モデル＋共有アトラス）
-    this.element.appendChild(this.section("モンスター（実モデル）"));
-    await this.buildModelGrid(renderer, MONSTERS, this.texLoaderByName("モンスター_アトラス"));
+    // モンスター（実モデル＋アトラス）
+    this.section("モンスター（実モデル）");
+    const mo = this.grid();
+    const atlas = this.texLoaderByName("モンスター_アトラス");
+    for (const [path, getUrl] of Object.entries(MONSTERS)) {
+      mo.appendChild(
+        this.modelCard(this.modelName(path), () => this.loadAndTex(getUrl, "gltf", atlas), [
+          { label: "種別", value: "モンスター（glTF）" },
+        ])
+      );
+    }
 
-    // テクスチャ（キャラ・BaseColor 画像をそのまま表示）
-    this.element.appendChild(this.section("テクスチャ（キャラ・BaseColor）"));
-    const tGrid = this.grid();
-    this.element.appendChild(tGrid);
+    // キャラクター（ゲーム内 EnemyUnit）
+    this.section("キャラクター（ゲーム内）");
+    const cg = this.grid();
+    for (const c of CHARACTERS) {
+      cg.appendChild(
+        this.modelCard(c.label, async () => new EnemyUnit(c.opts).group, [
+          { label: "種別", value: "ゲーム内キャラ（EnemyUnit）" },
+        ])
+      );
+    }
+
+    // テクスチャ（キャラ・BaseColor）：クリックで対応モデルに貼って3D
+    this.section("テクスチャ（キャラ・BaseColor）");
+    const tg = this.grid();
     for (const [path, getUrl] of Object.entries(CHARACTER_TEX)) {
-      try {
-        const url = await getUrl();
-        const make = this.texturePreviewMake(path);
-        tGrid.appendChild(
-          this.card(url, this.texName(path), "contain", make
-            ? () => this.modal.open(make, this.texName(path), [{ label: "種別", value: "キャラテクスチャ→実モデル3D" }])
-            : undefined)
-        );
-      } catch {
-        // 読み込めない画像はスキップ
-      }
+      const make = this.texturePreviewMake(path);
+      tg.appendChild(
+        this.texCard(getUrl, this.texName(path), make
+          ? () => this.modal.open(make, this.texName(path), [{ label: "種別", value: "キャラテクスチャ→実モデル3D" }])
+          : undefined)
+      );
     }
 
-    // ステージ（使い捨てシーンへ一時ロードして俯瞰描画→破棄）
-    this.element.appendChild(this.section("ステージ"));
-    const sGrid = this.grid();
+    // プロップ（木・室内・実モデル）
+    this.section("プロップ（木・室内・実モデル）");
+    const pg = this.grid();
+    for (const [path, getUrl] of Object.entries(PROPS)) {
+      const ext = this.modelExt(path);
+      pg.appendChild(
+        this.modelCard(this.modelName(path), () => this.loadAny(getUrl, ext), [{ label: "形式", value: ext.toUpperCase() }])
+      );
+    }
+
+    // ステージ（俯瞰3Dサムネ・クリックで確認用ロード）
+    this.section("ステージ");
+    const sg = this.grid();
     for (const s of STAGE_LIST) {
-      const cardEl = this.card(this.renderStage(renderer, s.id), s.label);
-      cardEl.style.cursor = "pointer";
-      cardEl.title = "クリックで確認用ロード";
-      cardEl.onclick = () => {
-        this.app.ctx.stage.load(s.id);
+      sg.appendChild(this.stageCard(s.id, s.label));
+    }
+
+    // テクスチャ（ステージ・BaseColor）
+    this.section("テクスチャ（ステージ・BaseColor）");
+    const stg = this.grid();
+    for (const [path, getUrl] of Object.entries(STAGE_TEX)) {
+      stg.appendChild(this.texCard(getUrl, this.texName(path), undefined));
+    }
+  }
+
+  // ===== セットアップ =====
+  private ensureRenderer(): void {
+    if (this.renderer) return;
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(1);
+    r.setSize(THUMB_W, THUMB_H);
+    this.renderer = r;
+    this.pmrem = new THREE.PMREMGenerator(r);
+    this.env = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  }
+
+  private ensureObserver(): void {
+    if (this.observer) return;
+    const root = this.element.parentElement ?? null;
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const fn = this.lazy.get(e.target);
+          if (fn) {
+            this.lazy.delete(e.target);
+            this.observer?.unobserve(e.target);
+            fn();
+          }
+        }
+      },
+      { root, rootMargin: "600px 0px" }
+    );
+  }
+
+  private observe(el: Element, fn: () => void): void {
+    this.lazy.set(el, fn);
+    this.observer?.observe(el);
+  }
+
+  // ===== ローダー（make: Object3D を返す） =====
+  private async loadGltf(getUrl: () => Promise<string>): Promise<THREE.Object3D | null> {
+    try {
+      const gltf = await new GLTFLoader().loadAsync(await getUrl());
+      return gltf.scene;
+    } catch {
+      return null;
+    }
+  }
+
+  private async loadAny(getUrl: () => Promise<string>, ext: string): Promise<THREE.Object3D | null> {
+    return loadModel(await getUrl(), ext);
+  }
+
+  private async cloneIngame(kind: WeaponKind): Promise<THREE.Object3D | null> {
+    const m = this.app.ctx.weapons.devWeaponModel(kind).clone();
+    m.visible = true;
+    m.traverse((o) => (o.visible = true)); // 非選択武器は visible=false のため戻す
+    m.position.set(0, 0, 0);
+    return m;
+  }
+
+  // モデルを読み込み、texLoader があれば全メッシュにそのテクスチャを map 適用して返す。
+  private async loadAndTex(
+    getUrl: () => Promise<string>,
+    ext: string,
+    texLoader: (() => Promise<string>) | null
+  ): Promise<THREE.Object3D | null> {
+    const obj = await loadModel(await getUrl(), ext);
+    if (obj && texLoader) {
+      const tex = await new THREE.TextureLoader().loadAsync(await texLoader());
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = false;
+      obj.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0.0 });
+      });
+    }
+    return obj;
+  }
+
+  // ===== カード生成 =====
+  // モデルカード：遅延でサムネ描画、クリックで PreviewModal。
+  private modelCard(name: string, makeObj: () => Promise<THREE.Object3D | null>, details: PreviewDetail[]): HTMLElement {
+    return this.lazyCard(
+      name,
+      "cover",
+      async () => {
+        const obj = await makeObj();
+        if (!obj) return null;
+        const u = this.renderThumb(obj);
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+        });
+        return u;
+      },
+      () => this.modal.open(makeObj, name, details)
+    );
+  }
+
+  // ステージカード：遅延で俯瞰サムネ、クリックで確認用ロード。
+  private stageCard(id: StageId, label: string): HTMLElement {
+    return this.lazyCard(
+      label,
+      "cover",
+      async () => this.renderStage(id),
+      () => {
+        this.app.ctx.stage.load(id);
         this.app.ctx.weapons.refreshShootables();
         const sp = this.app.ctx.stage.playerSpawn;
         this.app.ctx.player.respawn(sp.x, sp.y, sp.z);
-      };
-      sGrid.appendChild(cardEl);
-    }
-    this.element.appendChild(sGrid);
-
-    // テクスチャ（ステージ・BaseColor 画像をそのまま表示）
-    this.element.appendChild(this.section("テクスチャ（ステージ・BaseColor）"));
-    const stGrid = this.grid();
-    this.element.appendChild(stGrid);
-    for (const [path, getUrl] of Object.entries(STAGE_TEX)) {
-      try {
-        const url = await getUrl();
-        stGrid.appendChild(this.card(url, this.texName(path), "contain"));
-      } catch {
-        // 読み込めない画像はスキップ
       }
-    }
-
-    // プロップ（木・室内などの実モデル）
-    this.element.appendChild(this.section("プロップ（木・室内・実モデル）"));
-    await this.buildModelGrid(renderer, PROPS, null);
-
-    if (this.env) {
-      this.env.dispose();
-      this.env = null;
-    }
-    pmrem.dispose();
-    renderer.dispose(); // WebGL コンテキストを解放
+    );
   }
 
-  // 1オブジェクトを単独シーンで描画し dataURL を返す。
-  private renderObject(renderer: THREE.WebGLRenderer, obj: THREE.Object3D): string {
+  // テクスチャカード：画像をそのまま表示（遅延不要）。
+  private texCard(getUrl: () => Promise<string>, name: string, onClick?: () => void): HTMLElement {
+    const card = this.cardShell(name, "contain", onClick);
+    const img = card.firstChild as HTMLImageElement;
+    void getUrl().then((u) => (img.src = u));
+    return card;
+  }
+
+  // 遅延サムネカード：observe で画面内に入ったら renderThumbFn を一度だけ実行。
+  private lazyCard(
+    name: string,
+    fit: "cover" | "contain",
+    renderThumbFn: () => Promise<string | null>,
+    onClick?: () => void
+  ): HTMLElement {
+    const card = this.cardShell(name, fit, onClick);
+    const img = card.firstChild as HTMLImageElement;
+    this.observe(img, () => {
+      void renderThumbFn().then((u) => {
+        if (u) img.src = u;
+      });
+    });
+    return card;
+  }
+
+  private cardShell(name: string, fit: "cover" | "contain", onClick?: () => void): HTMLElement {
+    const card = document.createElement("div");
+    card.style.cssText =
+      "width:" + THUMB_W + "px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;" +
+      "background:rgba(255,255,255,0.04);overflow:hidden;";
+    if (onClick) {
+      card.style.cursor = "pointer";
+      card.title = "クリックでプレビューと詳細";
+      card.onclick = onClick;
+    }
+    const img = document.createElement("img");
+    img.style.cssText =
+      "display:block;width:100%;height:" + THUMB_H + "px;object-fit:" + fit + ";background:#0c0e12;";
+    const cap = document.createElement("div");
+    cap.textContent = name;
+    cap.style.cssText = "padding:4px 8px;font-size:12px;color:#cdd6e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    card.appendChild(img);
+    card.appendChild(cap);
+    return card;
+  }
+
+  // ===== 描画 =====
+  private renderThumb(obj: THREE.Object3D): string {
     const scene = new THREE.Scene();
     scene.environment = this.env;
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -269,14 +374,13 @@ export class AssetsPanel implements DevPanel {
     scene.add(dir);
     scene.add(obj);
     const cam = this.frameCamera(obj);
-    renderer.render(scene, cam);
-    const url = renderer.domElement.toDataURL("image/png");
+    this.renderer!.render(scene, cam);
+    const u = this.renderer!.domElement.toDataURL("image/png");
     scene.remove(obj);
-    return url;
+    return u;
   }
 
-  // ステージを使い捨てシーンへ一時ロードし俯瞰描画→破棄して dataURL を返す。
-  private renderStage(renderer: THREE.WebGLRenderer, id: StageId): string {
+  private renderStage(id: StageId): string {
     const scene = new THREE.Scene();
     scene.environment = this.env;
     const stage = new Stage(scene, id);
@@ -287,13 +391,18 @@ export class AssetsPanel implements DevPanel {
     const r = Math.max(size.x, size.z, 20) * 0.9;
     cam.position.set(center.x + r, center.y + r * 0.8 + 8, center.z + r);
     cam.lookAt(center.x, center.y, center.z);
-    renderer.render(scene, cam);
-    const url = renderer.domElement.toDataURL("image/png");
-    this.disposeScene(scene);
-    return url;
+    this.renderer!.render(scene, cam);
+    const u = this.renderer!.domElement.toDataURL("image/png");
+    scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) for (const m of mat) m.dispose();
+      else if (mat) (mat as THREE.Material).dispose();
+    });
+    return u;
   }
 
-  // オブジェクトを画面に収めるカメラを作る。
   private frameCamera(obj: THREE.Object3D): THREE.PerspectiveCamera {
     const box = new THREE.Box3().setFromObject(obj);
     const center = box.getCenter(new THREE.Vector3());
@@ -306,23 +415,27 @@ export class AssetsPanel implements DevPanel {
     return cam;
   }
 
-  private disposeScene(scene: THREE.Scene): void {
-    scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
-      const mat = mesh.material;
-      if (Array.isArray(mat)) for (const m of mat) m.dispose();
-      else if (mat) (mat as THREE.Material).dispose();
-    });
+  // ===== 補助 =====
+  private section(title: string): void {
+    const h = document.createElement("div");
+    h.className = "dr-cur";
+    h.style.marginTop = "8px";
+    h.textContent = title;
+    this.element.appendChild(h);
   }
 
-  // パスからカード名を作る（scifi_ar_1.gltf → "SciFi AR 1"）。
+  private grid(): HTMLElement {
+    const g = document.createElement("div");
+    g.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;";
+    this.element.appendChild(g);
+    return g;
+  }
+
   private niceName(path: string): string {
     const base = path.split("/").pop()?.replace(/\.gltf$/i, "") ?? path;
     return base.replace(/^scifi_ar_/i, "SciFi AR ").replace(/_/g, " ");
   }
 
-  // テクスチャのカード名（ファイル名から拡張子を除く）。
   private texName(path: string): string {
     return path.split("/").pop()?.replace(/\.png$/i, "") ?? path;
   }
@@ -335,16 +448,27 @@ export class AssetsPanel implements DevPanel {
     return (path.split("/").pop() ?? path).replace(/\.(gltf|glb|fbx|obj)$/i, "");
   }
 
-  // 取込テクスチャからファイル名に sub を含むものの URL ローダーを返す。
   private texLoaderByName(sub: string): (() => Promise<string>) | null {
     const k = Object.keys(CHARACTER_TEX).find((p) => (p.split("/").pop() ?? "").includes(sub));
     return k ? CHARACTER_TEX[k] : null;
   }
 
-  // キャラの実モデル(fbx)をファイル名で取得。
   private charModelLoader(file: string): (() => Promise<string>) | null {
     const k = Object.keys(CHAR_MODELS).find((p) => p.endsWith("/" + file));
     return k ? CHAR_MODELS[k] : null;
+  }
+
+  private weaponSpecDetails(kind: WeaponKind): PreviewDetail[] {
+    const s = this.app.ctx.weapons.devSpec(kind);
+    return [
+      { label: "種別", value: "ゲーム内武器（箱）" },
+      { label: "ダメージ", value: String(s.damage) },
+      { label: "連射RPM", value: String(Math.round(60 / s.fireInterval)) },
+      { label: "マガジン", value: String(s.magSize) },
+      { label: "予備弾", value: String(s.reserveMax) },
+      { label: "リロード", value: s.reloadTime.toFixed(1) + "s" },
+      { label: "フルオート", value: s.automatic ? "ON" : "OFF" },
+    ];
   }
 
   // 平面キャラテクスチャ→対応する実モデルに貼って3D表示する make()。対応モデルが無ければ null。
@@ -370,130 +494,24 @@ export class AssetsPanel implements DevPanel {
     return () => this.loadAndTex(ml, "fbx", skinLoader);
   }
 
-  // モデルを読み込み、texLoader があれば全メッシュにそのテクスチャを map 適用して返す。
-  private async loadAndTex(
-    getUrl: () => Promise<string>,
-    ext: string,
-    texLoader: (() => Promise<string>) | null
-  ): Promise<THREE.Object3D | null> {
-    const obj = await loadModel(await getUrl(), ext);
-    if (obj && texLoader) {
-      const tex = await new THREE.TextureLoader().loadAsync(await texLoader());
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.flipY = false;
-      obj.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) m.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0.0 });
-      });
+  // DEV RANGE 終了時：永続レンダラー・監視を解放。
+  dispose(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
     }
-    return obj;
-  }
-
-  // モデル群を 3D サムネイル化して並べる（クリックでプレビュー）。texLoader 指定時はテクスチャ適用。
-  private async buildModelGrid(
-    renderer: THREE.WebGLRenderer,
-    models: Record<string, () => Promise<string>>,
-    texLoader: (() => Promise<string>) | null
-  ): Promise<void> {
-    const grid = this.grid();
-    this.element.appendChild(grid);
-    for (const [path, getUrl] of Object.entries(models)) {
-      try {
-        const obj = await this.loadAndTex(getUrl, this.modelExt(path), texLoader);
-        if (!obj) continue;
-        const name = this.modelName(path);
-        const ext = this.modelExt(path);
-        grid.appendChild(
-          this.card(this.renderObject(renderer, obj), name, "cover", () =>
-            this.modal.open(() => this.loadAndTex(getUrl, ext, texLoader), name, [
-              { label: "形式", value: ext.toUpperCase() },
-            ])
-          )
-        );
-        obj.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (m.geometry) m.geometry.dispose();
-        });
-      } catch {
-        // 読み込めないモデルはスキップ
-      }
+    this.lazy.clear();
+    if (this.env) {
+      this.env.dispose();
+      this.env = null;
     }
-  }
-
-  // クリック時のプレビュー：取込武器モデル(gltf)。
-  private previewGltf(getUrl: () => Promise<string>, name: string): void {
-    this.modal.open(
-      async () => {
-        const gltf = await new GLTFLoader().loadAsync(await getUrl());
-        return gltf.scene;
-      },
-      name,
-      [
-        { label: "種別", value: "武器モデル（取込）" },
-        { label: "形式", value: "glTF" },
-      ]
-    );
-  }
-
-  // クリック時のプレビュー：ゲーム内武器（箱モデル）＋武器スペック詳細。
-  private previewIngame(kind: WeaponKind, label: string): void {
-    this.modal.open(
-      async () => this.app.ctx.weapons.devWeaponModel(kind).clone(),
-      label,
-      this.weaponSpecDetails(kind)
-    );
-  }
-
-  private weaponSpecDetails(kind: WeaponKind): PreviewDetail[] {
-    const s = this.app.ctx.weapons.devSpec(kind);
-    return [
-      { label: "種別", value: "ゲーム内武器（箱）" },
-      { label: "ダメージ", value: String(s.damage) },
-      { label: "連射RPM", value: String(Math.round(60 / s.fireInterval)) },
-      { label: "マガジン", value: String(s.magSize) },
-      { label: "予備弾", value: String(s.reserveMax) },
-      { label: "リロード", value: s.reloadTime.toFixed(1) + "s" },
-      { label: "フルオート", value: s.automatic ? "ON" : "OFF" },
-    ];
-  }
-
-  private section(title: string): HTMLElement {
-    const h = document.createElement("div");
-    h.className = "dr-cur";
-    h.style.marginTop = "8px";
-    h.textContent = title;
-    return h;
-  }
-
-  private grid(): HTMLElement {
-    const g = document.createElement("div");
-    g.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;";
-    return g;
-  }
-
-  private card(
-    url: string,
-    label: string,
-    fit: "cover" | "contain" = "cover",
-    onClick?: () => void
-  ): HTMLElement {
-    const card = document.createElement("div");
-    card.style.cssText =
-      "width:" + THUMB_W + "px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;" +
-      "background:rgba(255,255,255,0.04);overflow:hidden;";
-    if (onClick) {
-      card.style.cursor = "pointer";
-      card.title = "クリックでプレビューと詳細";
-      card.onclick = onClick;
+    if (this.pmrem) {
+      this.pmrem.dispose();
+      this.pmrem = null;
     }
-    const img = document.createElement("img");
-    img.src = url;
-    img.style.cssText = "display:block;width:100%;height:" + THUMB_H + "px;object-fit:" + fit + ";background:#0c0e12;";
-    const cap = document.createElement("div");
-    cap.textContent = label;
-    cap.style.cssText = "padding:4px 8px;font-size:12px;color:#cdd6e0;";
-    card.appendChild(img);
-    card.appendChild(cap);
-    return card;
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer = null;
+    }
   }
 }

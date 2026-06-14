@@ -789,7 +789,7 @@ export class Game {
       }
     }
 
-    for (const rp of this.remotePlayers.values()) rp.update(dt, 100); // renderDelay 100ms
+    for (const rp of this.remotePlayers.values()) rp.update(dt, 150); // renderDelay 150ms（3tick分・ジッタ余裕）
 
     // TDM：TAB長押しでスコアボード表示（onWorldStateで反映）
     this.scoreboardHeld = inputState.scoreboardHeld;
@@ -816,7 +816,7 @@ export class Game {
         this.remotePlayers.set(ps.playerId, rp);
         this.scene.add(rp.group);
       }
-      rp.receiveState(ps);
+      rp.receiveState(ps, world.timestamp);
     }
     // サーバー権威のグレネード弾
     const seen = new Set<string>();

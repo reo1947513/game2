@@ -34,9 +34,9 @@ export class RemotePlayer {
     this.avatar.setTeamColor(color);
   }
 
-  // サーバーからの状態を受け取る。
-  receiveState(state: PlayerState): void {
-    this.interp.push(state.position, state.yaw, state.pitch);
+  // サーバーからの状態を受け取る。serverTime は WorldState.timestamp（補間の時間軸の基準）。
+  receiveState(state: PlayerState, serverTime: number): void {
+    this.interp.push(state.position, state.yaw, state.pitch, serverTime);
     if (state.hp > this.maxHp) this.maxHp = state.hp;
     if (state.hp <= 0) {
       this.avatar.setState("dead");
@@ -52,7 +52,7 @@ export class RemotePlayer {
     const s = this.interp.sample(renderDelay);
     if (!s) return;
 
-    // 位置・向き（従来どおり＝補間の滑らかさを維持）
+    // 位置・向き（補間／外挿後の座標をそのまま反映＝滑らかさを維持）
     this.group.position.set(s.pos.x, s.pos.y, s.pos.z);
     this.group.rotation.y = s.yaw;
 

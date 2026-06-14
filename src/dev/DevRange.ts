@@ -253,6 +253,8 @@ export class DevRange implements DevApp {
   // 全画面表示の適用（this.fullscreen に従う。タブ切替では変えない）。
   private applyFullscreen(): void {
     this.panelRoot?.classList.toggle("dr-full", this.fullscreen);
+    // ASSETS のプレビューは全画面でない時は隠す（ボタンで再表示）。
+    (this.panels.assets as AssetsPanel).setHostFullscreen(this.fullscreen);
   }
 
   // グローバルトグル（回復 / 無敵 / 飛行 / 座標表示）をバー右側へ。

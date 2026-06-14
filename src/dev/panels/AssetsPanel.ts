@@ -82,12 +82,49 @@ export class AssetsPanel implements DevPanel {
   private observer: IntersectionObserver | null = null;
   private lazy = new Map<Element, () => void>();
 
+  // プレビュー（サムネ群）の表示制御：全画面でない時は既定で隠し、ボタンで表示する。
+  private galleryEl: HTMLElement;
+  private toggleBtn: HTMLButtonElement;
+  private hostFull = true; // DevRange が全画面かどうか
+  private previewOn = false; // 通常表示時にユーザーがボタンで表示させたか
+
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
     const note = document.createElement("div");
     note.className = "dr-cur";
     note.textContent = "読み込み済みアセット（実モデルのプレビュー・画面内に入った順にサムネ生成）";
     this.element.appendChild(note);
+
+    // 通常表示（全画面でない）時にプレビューを出し入れするボタン。
+    this.toggleBtn = document.createElement("button");
+    this.toggleBtn.className = "dr-tgl";
+    this.toggleBtn.style.margin = "6px 0";
+    this.toggleBtn.onclick = () => {
+      this.previewOn = !this.previewOn;
+      this.applyPreviewVisibility();
+    };
+    this.element.appendChild(this.toggleBtn);
+
+    // サムネ群はこのコンテナへ入れ、まとめて表示/非表示を切り替える。
+    this.galleryEl = document.createElement("div");
+    this.element.appendChild(this.galleryEl);
+
+    this.applyPreviewVisibility();
+  }
+
+  // DevRange の全画面状態を受け取り、プレビューの表示可否を更新する。
+  setHostFullscreen(full: boolean): void {
+    this.hostFull = full;
+    if (full) this.previewOn = false; // 全画面に戻したら通常表示時の手動表示はリセット
+    this.applyPreviewVisibility();
+  }
+
+  // 全画面なら常時表示、通常表示ならボタンON時のみ表示。
+  private applyPreviewVisibility(): void {
+    const visible = this.hostFull || this.previewOn;
+    this.galleryEl.style.display = visible ? "" : "none";
+    this.toggleBtn.style.display = this.hostFull ? "none" : ""; // 全画面ではボタン不要
+    this.toggleBtn.textContent = this.previewOn ? "プレビューを隠す" : "プレビューを表示";
   }
 
   onShow(): void {
@@ -345,13 +382,24 @@ export class AssetsPanel implements DevPanel {
     this.app.ctx.input.queueSwitch(WeaponKind.Assault);
   }
 
-  // 手元ビューモデル用にモデルを縮尺・原点寄せする（向きはモデル次第・概算）。
+  // 手元ビューモデル用にモデルを回頭・縮尺・原点寄せする。
+  // 取込武器の多くは横(x)向きで作られているため、銃身を前方(-z)へ向けて
+  // 既定の箱武器と同じ持ち方にする。
   private fitViewmodel(obj: THREE.Object3D): void {
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
+    // 1) 素の寸法を測り、銃身が横(x)向きなら前方(-z)へ回頭する。
+    obj.rotation.set(0, 0, 0);
+    obj.updateMatrixWorld(true);
+    const raw = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
+    if (raw.x > raw.z * 1.15) obj.rotation.y = -Math.PI / 2; // 横向き → 前方
+    obj.updateMatrixWorld(true);
+
+    // 2) 最長辺を基準にスケールを合わせる。
+    const size = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
     obj.scale.setScalar(0.6 / (Math.max(size.x, size.y, size.z) || 1));
-    const box2 = new THREE.Box3().setFromObject(obj);
-    const c = box2.getCenter(new THREE.Vector3());
+    obj.updateMatrixWorld(true);
+
+    // 3) 原点寄せ＋手元の少し前へ置く。
+    const c = new THREE.Box3().setFromObject(obj).getCenter(new THREE.Vector3());
     obj.position.set(-c.x, -c.y - 0.05, -c.z - 0.3);
   }
 
@@ -473,13 +521,13 @@ export class AssetsPanel implements DevPanel {
     h.className = "dr-cur";
     h.style.marginTop = "8px";
     h.textContent = title;
-    this.element.appendChild(h);
+    this.galleryEl.appendChild(h);
   }
 
   private grid(): HTMLElement {
     const g = document.createElement("div");
     g.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;";
-    this.element.appendChild(g);
+    this.galleryEl.appendChild(g);
     return g;
   }
 

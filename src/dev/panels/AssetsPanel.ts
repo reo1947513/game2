@@ -82,31 +82,19 @@ export class AssetsPanel implements DevPanel {
   private observer: IntersectionObserver | null = null;
   private lazy = new Map<Element, () => void>();
 
-  // プレビュー（サムネ群）の表示制御：全画面でない時は既定で隠し、ボタンで表示する。
+  // プレビュー（サムネ群）の表示制御：全画面の時だけ表示し、通常表示では一切出さない。
   private galleryEl: HTMLElement;
-  private toggleBtn: HTMLButtonElement;
   private hostFull = true; // DevRange が全画面かどうか
-  private previewOn = false; // 通常表示時にユーザーがボタンで表示させたか
 
   constructor(private app: DevApp) {
     this.element = document.createElement("div");
+
+    // ヘッダ＋サムネ一覧はこのコンテナにまとめ、全画面の時だけ表示する。
+    this.galleryEl = document.createElement("div");
     const note = document.createElement("div");
     note.className = "dr-cur";
     note.textContent = "読み込み済みアセット（実モデルのプレビュー・画面内に入った順にサムネ生成）";
-    this.element.appendChild(note);
-
-    // 通常表示（全画面でない）時にプレビューを出し入れするボタン。
-    this.toggleBtn = document.createElement("button");
-    this.toggleBtn.className = "dr-tgl";
-    this.toggleBtn.style.margin = "6px 0";
-    this.toggleBtn.onclick = () => {
-      this.previewOn = !this.previewOn;
-      this.applyPreviewVisibility();
-    };
-    this.element.appendChild(this.toggleBtn);
-
-    // サムネ群はこのコンテナへ入れ、まとめて表示/非表示を切り替える。
-    this.galleryEl = document.createElement("div");
+    this.galleryEl.appendChild(note);
     this.element.appendChild(this.galleryEl);
 
     this.applyPreviewVisibility();
@@ -115,16 +103,12 @@ export class AssetsPanel implements DevPanel {
   // DevRange の全画面状態を受け取り、プレビューの表示可否を更新する。
   setHostFullscreen(full: boolean): void {
     this.hostFull = full;
-    if (full) this.previewOn = false; // 全画面に戻したら通常表示時の手動表示はリセット
     this.applyPreviewVisibility();
   }
 
-  // 全画面なら常時表示、通常表示ならボタンON時のみ表示。
+  // プレビューは全画面の時のみ表示。通常表示では一切出さない。
   private applyPreviewVisibility(): void {
-    const visible = this.hostFull || this.previewOn;
-    this.galleryEl.style.display = visible ? "" : "none";
-    this.toggleBtn.style.display = this.hostFull ? "none" : ""; // 全画面ではボタン不要
-    this.toggleBtn.textContent = this.previewOn ? "プレビューを隠す" : "プレビューを表示";
+    this.galleryEl.style.display = this.hostFull ? "" : "none";
   }
 
   onShow(): void {

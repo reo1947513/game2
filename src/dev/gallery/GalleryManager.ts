@@ -3,6 +3,9 @@ import { EnemyUnit } from "../../Enemy";
 import { DevCtx } from "../devTypes";
 import { GalleryTarget } from "./GalleryTarget";
 import { GALLERY } from "./ShootingGallery";
+import { FeedbackZone, HitFeedback } from "./HitFeedback";
+import { AccuracyTracker } from "./AccuracyTracker";
+import { ImpactPattern } from "./ImpactPattern";
 
 interface TrainEnemy {
   unit: EnemyUnit;
@@ -13,16 +16,72 @@ interface TrainEnemy {
 }
 
 // SHOOTING GALLERY の的・訓練敵を管理する（生成・更新・命中・撤去）。
-// enemyTargets への登録と基本的な命中応答を担当（部位スコア・着弾可視化はステージ2）。
+// enemyTargets への登録と命中応答に加え、ステージ2の着弾可視化（マーカー/弾痕/部位）・
+// 命中精度パネル・2D着弾分布を devShotHook 経由でまとめて駆動する。
 export class GalleryManager {
   private targets: GalleryTarget[] = [];
   private enemies: TrainEnemy[] = [];
 
-  constructor(private ctx: DevCtx) {}
+  private feedback: HitFeedback;
+  private accuracy: AccuracyTracker;
+  private pattern: ImpactPattern;
 
-  // 命中フックを取得（射撃場入場時に結線）。
+  constructor(private ctx: DevCtx) {
+    this.feedback = new HitFeedback(this.ctx.scene, this.ctx.camera);
+    this.accuracy = new AccuracyTracker();
+    this.pattern = new ImpactPattern();
+  }
+
+  // 命中フック・射撃フックを結線し、統計パネルを表示（射撃場入場時）。
   enable(): void {
     this.ctx.weapons.enemyHitHook = (obj, dmg) => this.onHit(obj, dmg);
+    this.ctx.weapons.devShotHook = (shots) => this.onShots(shots);
+    this.feedback.clearWorld();
+    this.accuracy.reset();
+    this.pattern.clear();
+    this.accuracy.show();
+    this.pattern.show();
+  }
+
+  // フック解除・統計パネル非表示・演出撤去（射撃場から出る/DEV RANGE終了時）。
+  disable(): void {
+    this.clear();
+    this.ctx.weapons.enemyHitHook = null;
+    this.ctx.weapons.devShotHook = null;
+    this.accuracy.hide();
+    this.pattern.hide();
+  }
+
+  // ===== 着弾フィードバック・統計（devShotHook：1射ごとに全ペレット分）=====
+  private onShots(
+    shots: Array<{ object: THREE.Object3D | null; point: THREE.Vector3 | null; origin: THREE.Vector3 }>
+  ): void {
+    const entries: Array<{ zone: FeedbackZone }> = [];
+    for (const s of shots) {
+      let zone: FeedbackZone = "miss";
+      let center: THREE.Vector3 | null = null;
+
+      if (s.object && s.point) {
+        const t = this.targets.find((x) => x.owns(s.object!));
+        if (t && t.hittable()) {
+          zone = t.classify(s.point).zone;
+          center = t.group.position;
+        } else {
+          const e = this.enemies.find(
+            (x) => !x.dead && (x.unit.hitbox === s.object || x.unit.headHitbox === s.object)
+          );
+          if (e) {
+            zone = e.unit.headHitbox === s.object ? "head" : "body";
+            center = e.unit.group.position;
+          }
+        }
+      }
+
+      if (s.point) this.feedback.addImpact(s.point, s.origin, zone);
+      if (s.point && center) this.pattern.add(s.point.x - center.x, s.point.y - center.y, zone);
+      entries.push({ zone });
+    }
+    this.accuracy.register(entries);
   }
 
   // ===== 配置 =====
@@ -98,6 +157,7 @@ export class GalleryManager {
 
   // ===== 毎フレーム更新 =====
   update(dt: number, now: number): void {
+    this.feedback.update(now);
     for (const t of this.targets) t.update(dt, now);
 
     const p = this.ctx.player.position;
@@ -127,6 +187,7 @@ export class GalleryManager {
   }
 
   clear(): void {
+    this.feedback.clearWorld();
     for (const t of this.targets) {
       this.removeTarget(t.hitMesh);
       t.dispose(this.ctx.scene);

@@ -99,7 +99,7 @@ export class DevRange implements DevApp {
     (this.panels.weapon as WeaponPanel).resetAll(); // 武器スペックを既定へ復帰＋実モデル解除
     (this.panels.stage as StagePanel).clearStageTexture(); // ステージのテクスチャ試着を解除
     (this.panels.assets as AssetsPanel).dispose(); // ギャラリーの永続レンダラー解放
-    this.galleryMgr.clear(); // SHOOTING GALLERY の的・敵を撤去
+    this.galleryMgr.disable(); // SHOOTING GALLERY の的・敵を撤去＋フック解除・統計パネル非表示
     this.ctx.player.setFlyMode(false);
     this.ctx.health.setInvincible(false);
     this.ctx.input.setAdsActive(false);
@@ -134,6 +134,7 @@ export class DevRange implements DevApp {
   enterRange(): void {
     this.cameraMode = "fps";
     this.devCamera.setMode("fps");
+    this.galleryMgr.disable(); // 射撃場の的・フック・統計パネルを撤去してから簡易レンジへ
     this.ctx.stage.loadCustom(buildRange, "range");
     this.ctx.weapons.refreshShootables();
     const sp = this.ctx.stage.playerSpawn;

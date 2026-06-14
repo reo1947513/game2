@@ -786,7 +786,7 @@ export class Game {
       }
     }
 
-    for (const rp of this.remotePlayers.values()) rp.update(100); // renderDelay 100ms
+    for (const rp of this.remotePlayers.values()) rp.update(dt, 100); // renderDelay 100ms
 
     // TDM：TAB長押しでスコアボード表示（onWorldStateで反映）
     this.scoreboardHeld = inputState.scoreboardHeld;

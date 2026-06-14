@@ -88,6 +88,31 @@ export class TargetsPanel implements DevPanel {
     charRow.appendChild(this.btn("キャラを配置（視線の先）", () => this.addCharacter(skinSel.value)));
     this.element.appendChild(charRow);
 
+    // SHOOTING GALLERY（本格射撃場）の的配置
+    const gHead = document.createElement("div");
+    gHead.className = "dr-cur";
+    gHead.style.marginTop = "8px";
+    gHead.textContent = "SHOOTING GALLERY（本格射撃場）";
+    this.element.appendChild(gHead);
+    const g1 = document.createElement("div");
+    g1.className = "dr-actions";
+    g1.appendChild(this.btn("会場へ入る", () => this.app.enterGallery()));
+    g1.appendChild(this.btn("静止的6体", () => this.app.getGallery().spawnStaticSet()));
+    g1.appendChild(this.btn("往復(遅)", () => this.app.getGallery().spawnPatrol(2)));
+    g1.appendChild(this.btn("往復(普)", () => this.app.getGallery().spawnPatrol(4)));
+    g1.appendChild(this.btn("往復(速)", () => this.app.getGallery().spawnPatrol(7)));
+    g1.appendChild(this.btn("振り子", () => this.app.getGallery().spawnPendulum()));
+    g1.appendChild(this.btn("ポップアップ", () => this.app.getGallery().spawnPopup(2)));
+    g1.appendChild(this.btn("敵3体", () => this.app.getGallery().spawnEnemies(3)));
+    this.element.appendChild(g1);
+    const g2 = document.createElement("div");
+    g2.className = "dr-actions";
+    g2.appendChild(this.btn("プリセット:精度", () => this.app.getGallery().presetAccuracy()));
+    g2.appendChild(this.btn("プリセット:追従", () => this.app.getGallery().presetTracking()));
+    g2.appendChild(this.btn("プリセット:実戦", () => this.app.getGallery().presetCombat()));
+    g2.appendChild(this.btn("会場の的を全消去", () => this.app.getGallery().clear()));
+    this.element.appendChild(g2);
+
     this.refreshCount();
     this.refreshLog();
   }

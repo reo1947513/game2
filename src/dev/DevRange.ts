@@ -10,6 +10,8 @@ import { CameraPanel } from "./panels/CameraPanel";
 import { StatsPanel } from "./panels/StatsPanel";
 import { AssetsPanel } from "./panels/AssetsPanel";
 import { buildRange } from "./RangeStage";
+import { buildShootingGallery } from "./gallery/ShootingGallery";
+import { GalleryManager } from "./gallery/GalleryManager";
 
 // ===== 開発者テストレンジ DEV RANGE（オーケストレータ）=====
 //
@@ -50,9 +52,12 @@ export class DevRange implements DevApp {
   private onExit: (() => void) | null = null;
   private canvasClick: (() => void) | null = null;
 
+  private galleryMgr: GalleryManager;
+
   constructor(game: Game) {
     this.ctx = game.devContext();
     this.devCamera = new DevCamera(this.ctx);
+    this.galleryMgr = new GalleryManager(this.ctx);
   }
 
   start(onExit?: () => void): void {
@@ -94,6 +99,7 @@ export class DevRange implements DevApp {
     (this.panels.weapon as WeaponPanel).resetAll(); // 武器スペックを既定へ復帰＋実モデル解除
     (this.panels.stage as StagePanel).clearStageTexture(); // ステージのテクスチャ試着を解除
     (this.panels.assets as AssetsPanel).dispose(); // ギャラリーの永続レンダラー解放
+    this.galleryMgr.clear(); // SHOOTING GALLERY の的・敵を撤去
     this.ctx.player.setFlyMode(false);
     this.ctx.health.setInvincible(false);
     this.ctx.input.setAdsActive(false);
@@ -135,6 +141,23 @@ export class DevRange implements DevApp {
     (this.panels.targets as TargetsPanel).spawnPreset();
   }
 
+  // 本格射撃場 SHOOTING GALLERY へ切り替える。
+  enterGallery(): void {
+    this.cameraMode = "fps";
+    this.devCamera.setMode("fps");
+    this.galleryMgr.clear();
+    this.ctx.stage.loadCustom(buildShootingGallery, "gallery");
+    this.ctx.weapons.refreshShootables();
+    const sp = this.ctx.stage.playerSpawn;
+    this.ctx.player.respawn(sp.x, sp.y, sp.z);
+    this.galleryMgr.enable();
+    this.galleryMgr.presetAccuracy(); // 初期は距離別の静止的
+  }
+
+  getGallery(): GalleryManager {
+    return this.galleryMgr;
+  }
+
   // ===== 独自レンダーループ =====
   private loop = (): void => {
     if (!this.running) return; // stop() で停止
@@ -167,6 +190,7 @@ export class DevRange implements DevApp {
     }
 
     this.ctx.stage.updateTargets(now);
+    this.galleryMgr.update(dt, now); // SHOOTING GALLERY の的・訓練敵（未使用時は空）
 
     const panel = this.panels[this.activeTab];
     if (panel.update) panel.update(dt, now);

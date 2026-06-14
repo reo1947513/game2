@@ -60,6 +60,9 @@ export class StagePanel implements DevPanel {
     const rangeBtn = this.btn("▶ 射撃場に入る（的・敵＋武器テスト）", () => this.app.enterRange());
     rangeBtn.classList.toggle("on", (ctx.stage.stageId as string) === "range");
     rangeWrap.appendChild(rangeBtn);
+    const galBtn = this.btn("▶ SHOOTING GALLERY（本格射撃場）", () => this.app.enterGallery());
+    galBtn.classList.toggle("on", (ctx.stage.stageId as string) === "gallery");
+    rangeWrap.appendChild(galBtn);
     this.element.appendChild(rangeWrap);
 
     // 確認用ステージ（素のまま確認。ワイヤーフレーム・コライダー・照明・マテリアル一覧用）

@@ -74,6 +74,12 @@ export class WeaponSystem {
   // 設定されているとサーバー権威の命中判定へ送られる（ローカルの的判定はそのまま）。
   onShot: ((origin: THREE.Vector3, dir: THREE.Vector3, damage: number) => void) | null = null;
 
+  // DEV RANGE 用：1発（全ペレット）の命中結果を渡す。命中点・対象（壁/床/的）・起点。
+  // 着弾マーカー・部位判定・外し・距離・集弾の可視化に使う。追加のみ・既定 null。
+  devShotHook:
+    | ((shots: Array<{ object: THREE.Object3D | null; point: THREE.Vector3 | null; origin: THREE.Vector3 }>) => void)
+    | null = null;
+
   constructor(
     private camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
@@ -531,6 +537,8 @@ export class WeaponSystem {
 
     // ショットガンは1回の射撃で複数の弾が散らばる。通常の銃は1発。
     const pellets = w.spec.pellets ?? 1;
+    const devShots: Array<{ object: THREE.Object3D | null; point: THREE.Vector3 | null; origin: THREE.Vector3 }> | null =
+      this.devShotHook ? [] : null;
     for (let p = 0; p < pellets; p++) {
       const dir = baseDir.clone();
       const a = (Math.random() * 2 - 1) * spread;
@@ -539,7 +547,15 @@ export class WeaponSystem {
       this.raycaster.set(origin, dir);
       const hits = this.raycaster.intersectObjects(objs, false);
       if (hits.length > 0) this.handleHit(hits[0].object, w);
+      if (devShots) {
+        devShots.push({
+          object: hits.length > 0 ? hits[0].object : null,
+          point: hits.length > 0 ? hits[0].point.clone() : null,
+          origin: origin.clone(),
+        });
+      }
     }
+    if (this.devShotHook && devShots) this.devShotHook(devShots);
 
     // 反動：視点を少し上へ。発砲拡散と見た目反動も加算。
     this.input.addPitch(w.spec.recoilKick);

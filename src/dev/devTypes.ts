@@ -1,4 +1,5 @@
 import type { Game } from "../Game";
+import type { GalleryManager } from "./gallery/GalleryManager";
 
 // DEV RANGE 内部で共有する型。値の循環 import を避けるため型だけをここに集約する。
 
@@ -23,4 +24,8 @@ export interface DevApp {
   getCameraMode(): CameraMode;
   // 射撃場へ切り替える（専用レンジをロードし的・敵を出す）。
   enterRange(): void;
+  // 本格射撃場 SHOOTING GALLERY へ切り替える。
+  enterGallery(): void;
+  // SHOOTING GALLERY の的管理を取得（TARGETS タブの配置UI用）。
+  getGallery(): GalleryManager;
 }

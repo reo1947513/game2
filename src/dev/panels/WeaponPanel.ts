@@ -309,8 +309,10 @@ export class WeaponPanel implements DevPanel {
 
   // DEV RANGE 終了時：全武器スペックを既定へ復帰し、実モデル試着も解除して箱モデルへ戻す。
   resetAll(): void {
-    for (const k of ORDER) this.resetSpec(k);
-    for (const k of this.vmModels.keys()) this.app.ctx.weapons.devSetViewmodel(k, null);
+    for (const k of ORDER) {
+      this.resetSpec(k);
+      this.app.ctx.weapons.devSetViewmodel(k, null); // 実モデル装着・ギャラリー装備を解除
+    }
     this.vmModels.clear();
   }
 

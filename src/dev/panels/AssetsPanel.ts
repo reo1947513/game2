@@ -8,6 +8,7 @@ import { DevApp, DevPanel } from "../devTypes";
 import { loadSurvivor, survivorSkins } from "../CharacterModels";
 import { PreviewModal, type PreviewDetail } from "../PreviewModal";
 import { loadModel } from "../ModelLoader";
+import { defaultSpec, gunTypeLabel, type EditableSpec } from "../WeaponDefaults";
 
 // ASSETS タブ：取込アセットをカテゴリ別に3Dサムネイル一覧する。
 // モデルが多数（武器だけで100以上）になるため、サムネイルは IntersectionObserver による
@@ -69,6 +70,8 @@ export class AssetsPanel implements DevPanel {
   element: HTMLElement;
   private built = false;
   private modal = new PreviewModal();
+  // 取込武器ごとのカスタム性能（規定値から開始・セッション内保持）
+  private weaponSpecs = new Map<string, EditableSpec>();
 
   // 永続オフスクリーン描画（使い回す）
   private renderer: THREE.WebGLRenderer | null = null;
@@ -101,8 +104,10 @@ export class AssetsPanel implements DevPanel {
     this.section("武器モデル（取込・gltf）");
     const wg = this.grid();
     for (const [path, getUrl] of Object.entries(WEAPON_GLTF)) {
+      const name = this.niceName(path);
+      const make = () => this.loadGltf(getUrl);
       wg.appendChild(
-        this.modelCard(this.niceName(path), () => this.loadGltf(getUrl), [{ label: "形式", value: "glTF" }])
+        this.modelCard(name, make, [{ label: "種別", value: gunTypeLabel(name) }, { label: "形式", value: "glTF" }], this.weaponCfg(name, make))
       );
     }
 
@@ -111,8 +116,10 @@ export class AssetsPanel implements DevPanel {
     const wo = this.grid();
     for (const [path, getUrl] of Object.entries(WEAPON_OTHER)) {
       const ext = this.modelExt(path);
+      const name = this.modelName(path);
+      const make = () => this.loadAny(getUrl, ext);
       wo.appendChild(
-        this.modelCard(this.modelName(path), () => this.loadAny(getUrl, ext), [{ label: "形式", value: ext.toUpperCase() }])
+        this.modelCard(name, make, [{ label: "種別", value: gunTypeLabel(name) }, { label: "形式", value: ext.toUpperCase() }], this.weaponCfg(name, make))
       );
     }
 
@@ -288,7 +295,12 @@ export class AssetsPanel implements DevPanel {
 
   // ===== カード生成 =====
   // モデルカード：遅延でサムネ描画、クリックで PreviewModal。
-  private modelCard(name: string, makeObj: () => Promise<THREE.Object3D | null>, details: PreviewDetail[]): HTMLElement {
+  private modelCard(
+    name: string,
+    makeObj: () => Promise<THREE.Object3D | null>,
+    details: PreviewDetail[],
+    weaponCfg?: { spec: EditableSpec; onUse: () => void }
+  ): HTMLElement {
     return this.lazyCard(
       name,
       "cover",
@@ -302,8 +314,45 @@ export class AssetsPanel implements DevPanel {
         });
         return u;
       },
-      () => this.modal.open(makeObj, name, details)
+      () => this.modal.open(makeObj, name, details, weaponCfg)
     );
+  }
+
+  // 取込武器のカスタム性能（無ければ規定値で初期化）。
+  private getWeaponSpec(name: string): EditableSpec {
+    let s = this.weaponSpecs.get(name);
+    if (!s) {
+      s = defaultSpec(name);
+      this.weaponSpecs.set(name, s);
+    }
+    return s;
+  }
+
+  // 武器カードに渡すカスタマイズ設定。
+  private weaponCfg(name: string, makeObj: () => Promise<THREE.Object3D | null>): { spec: EditableSpec; onUse: () => void } {
+    return { spec: this.getWeaponSpec(name), onUse: () => void this.equipWeapon(makeObj, name) };
+  }
+
+  // 「射撃場で使う」：射撃場へ入り、このモデルを手元に装着して、カスタム性能を適用する。
+  private async equipWeapon(makeObj: () => Promise<THREE.Object3D | null>, name: string): Promise<void> {
+    const spec = this.getWeaponSpec(name);
+    const obj = await makeObj();
+    if (!obj) return;
+    this.fitViewmodel(obj);
+    this.app.enterRange(); // 射撃場へ（的・敵が出る）
+    this.app.ctx.weapons.devSetViewmodel(WeaponKind.Assault, obj);
+    Object.assign(this.app.ctx.weapons.devSpec(WeaponKind.Assault), spec);
+    this.app.ctx.input.queueSwitch(WeaponKind.Assault);
+  }
+
+  // 手元ビューモデル用にモデルを縮尺・原点寄せする（向きはモデル次第・概算）。
+  private fitViewmodel(obj: THREE.Object3D): void {
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    obj.scale.setScalar(0.6 / (Math.max(size.x, size.y, size.z) || 1));
+    const box2 = new THREE.Box3().setFromObject(obj);
+    const c = box2.getCenter(new THREE.Vector3());
+    obj.position.set(-c.x, -c.y - 0.05, -c.z - 0.3);
   }
 
   // ステージカード：遅延で俯瞰サムネ、クリックで確認用ロード。

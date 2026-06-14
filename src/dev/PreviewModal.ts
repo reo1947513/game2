@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EditableSpec } from "./WeaponDefaults";
 
 // DEV RANGE 用：アセットを大きく自動回転プレビューし、詳細を表示するモーダル。
 // カードのクリックで open する。dev 層のため本番には含まれない。
@@ -24,7 +25,13 @@ export class PreviewModal {
   private last = 0;
 
   // make: 表示する Object3D を生成（非同期可）。details: 右側に出す静的な詳細。
-  open(make: () => Promise<THREE.Object3D | null>, title: string, details: PreviewDetail[]): void {
+  // weapon: 指定すると性能カスタマイズUI＋「射撃場で使う」ボタンを表示する。
+  open(
+    make: () => Promise<THREE.Object3D | null>,
+    title: string,
+    details: PreviewDetail[],
+    weapon?: { spec: EditableSpec; onUse: () => void }
+  ): void {
     this.close();
 
     const overlay = document.createElement("div");
@@ -68,6 +75,7 @@ export class PreviewModal {
       "width:240px;height:" + VH + "px;overflow-y:auto;padding:12px 14px;font-size:12px;color:#cdd6e0;line-height:1.9;";
     const dl = document.createElement("div");
     info.appendChild(dl);
+    if (weapon) info.appendChild(this.buildWeaponEditor(weapon));
 
     body.appendChild(viewWrap);
     body.appendChild(info);
@@ -149,6 +157,72 @@ export class PreviewModal {
     if (this.pivot) this.pivot.rotation.y += dt * 0.7; // 自動回転
     this.renderer.render(this.scene, this.camera);
   };
+
+  // 性能カスタマイズUI（規定値を編集）＋「射撃場で使う」ボタン。spec を直接書き換える。
+  private buildWeaponEditor(weapon: { spec: EditableSpec; onUse: () => void }): HTMLElement {
+    const s = weapon.spec;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:10px;border-top:1px solid rgba(255,255,255,0.12);padding-top:8px;";
+    const head = document.createElement("div");
+    head.textContent = "性能カスタマイズ";
+    head.style.cssText = "font-weight:800;color:#ffce7a;font-size:12px;margin-bottom:6px;";
+    wrap.appendChild(head);
+
+    const num = (label: string, get: () => number, set: (v: number) => void, step: number): void => {
+      const row = document.createElement("div");
+      row.style.cssText =
+        "display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;color:#aeb6c0;margin:2px 0;";
+      const lab = document.createElement("span");
+      lab.textContent = label;
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.step = String(step);
+      inp.value = String(get());
+      inp.style.cssText =
+        "width:76px;background:rgba(255,255,255,0.06);color:#fff;border:1px solid rgba(255,255,255,0.2);" +
+        "border-radius:4px;padding:2px 5px;font-size:11px;";
+      inp.oninput = () => {
+        const v = parseFloat(inp.value);
+        if (isFinite(v)) set(v);
+      };
+      row.appendChild(lab);
+      row.appendChild(inp);
+      wrap.appendChild(row);
+    };
+
+    num("ダメージ", () => s.damage, (v) => (s.damage = v), 1);
+    num("連射RPM", () => Math.round(60 / s.fireInterval), (v) => {
+      if (v > 0) s.fireInterval = 60 / v;
+    }, 10);
+    num("マガジン", () => s.magSize, (v) => (s.magSize = Math.round(v)), 1);
+    num("予備弾", () => s.reserveMax, (v) => (s.reserveMax = Math.round(v)), 1);
+    num("リロード(秒)", () => s.reloadTime, (v) => (s.reloadTime = v), 0.1);
+    num("縦反動", () => s.recoilKick, (v) => (s.recoilKick = v), 0.001);
+    num("ADS視野角", () => s.adsFov, (v) => (s.adsFov = v), 1);
+    num("ペレット", () => s.pellets ?? 1, (v) => (s.pellets = Math.round(v)), 1);
+
+    const chkRow = document.createElement("label");
+    chkRow.style.cssText = "display:flex;align-items:center;gap:6px;font-size:11px;color:#aeb6c0;margin:4px 0;";
+    const chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.checked = !!s.automatic;
+    chk.onchange = () => (s.automatic = chk.checked);
+    chkRow.appendChild(chk);
+    chkRow.appendChild(document.createTextNode("フルオート"));
+    wrap.appendChild(chkRow);
+
+    const use = document.createElement("button");
+    use.textContent = "▶ 射撃場で使う";
+    use.style.cssText =
+      "width:100%;margin-top:8px;padding:8px;font-size:13px;font-weight:800;color:#1a1206;" +
+      "background:linear-gradient(180deg,#ffd884,#f5a623);border:none;border-radius:8px;cursor:pointer;";
+    use.onclick = () => {
+      weapon.onUse();
+      this.close();
+    };
+    wrap.appendChild(use);
+    return wrap;
+  }
 
   private countTriangles(obj: THREE.Object3D): number {
     let tris = 0;

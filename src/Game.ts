@@ -364,6 +364,9 @@ export class Game {
     this.ctx.difficulty = this.selectedDifficulty;
     this.melee.cancel();
     this.weapons.unlock(); // オフラインモードでは武器固定を解除（ROOFTOP DUEL対策）
+    // HP表示が常時化したため、どのモードでも満タンで開始し前モードの残りHPを持ち越さない。
+    // 戦闘系モードは start() 内で改めて reset(100) するので、ここで先に戻しておく。
+    this.health.reset(100);
     this.modeManager.start(id, this.ctx, now);
     // ステージのスポーン地点から開始する（SKYFRAMEは南ゲート前）
     const s = this.stage.playerSpawn;

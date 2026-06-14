@@ -925,7 +925,14 @@ export class TouchControls {
     try {
       const raw = localStorage.getItem(lsSlot(n));
       if (!raw) {
-        this.flashButton(btn, "空です", "読込");
+        // このスロットが未保存のときは、内蔵の初期配置（DEFAULT_LAYOUT）を読み込んで適用する。
+        // sanitize(null) は DEFAULT_LAYOUT から作り直した新しいレイアウトを返すため、
+        // 以後の編集で定数 DEFAULT_LAYOUT を汚染しない。
+        this.layout = this.sanitize(null);
+        this.applyLayout();
+        this.refreshSizeEditor();
+        this.saveLast();
+        this.flashButton(btn, "初期配置", "読込");
         return;
       }
       this.layout = this.sanitize(JSON.parse(raw) as Partial<Layout>);

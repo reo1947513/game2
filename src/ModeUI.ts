@@ -187,7 +187,7 @@ export class ModeUI {
 
   // モード中の情報表示の出し入れ
   showHud(show: boolean): void {
-    this.hud.style.display = show ? "block" : "none";
+    this.hud.style.display = show ? "flex" : "none";
   }
 
   hideHud(): void {
@@ -335,19 +335,27 @@ export class ModeUI {
         transform: translateX(-50%);
         z-index: 45;
         display: none;
-        text-align: center;
+        align-items: center;
         pointer-events: none;
-        background: rgba(10, 12, 16, 0.5);
-        border: 1px solid rgba(255, 200, 80, 0.35);
-        border-radius: 10px;
-        padding: 8px 18px;
+        background: linear-gradient(160deg, rgba(12, 17, 24, 0.86), rgba(10, 14, 20, 0.62));
+        border: 1px solid rgba(95, 205, 235, 0.45);
+        border-radius: 12px;
+        box-shadow: inset 0 0 18px rgba(70, 190, 225, 0.12), 0 6px 22px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        padding: 8px 6px;
       }
       #mode-ui .mode-hud-line {
-        color: #ffe6b0;
+        color: #ffd27a;
         font-size: 16px;
-        font-weight: 700;
-        line-height: 1.4;
+        font-weight: 800;
+        line-height: 1.2;
+        letter-spacing: 0.04em;
+        padding: 2px 18px;
         text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+      }
+      #mode-ui .mode-hud-line + .mode-hud-line {
+        border-left: 1px solid rgba(95, 205, 235, 0.3);
       }
     `;
     document.head.appendChild(style);

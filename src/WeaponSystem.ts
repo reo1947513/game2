@@ -101,8 +101,9 @@ export class WeaponSystem {
     this.weapons.get(WeaponKind.Shotgun)!.model.visible = false;
     this.weapons.get(WeaponKind.Smg)!.model.visible = false;
 
-    // 初期の武器名を表示する
+    // 初期の武器名・連射モードを表示する
     this.hud.setWeaponName(this.weapons.get(this.current)!.spec.displayName);
+    this.hud.setFireMode(this.weapons.get(this.current)!.spec.automatic ? "AUTO" : "SEMI");
 
     // 射撃対象となるメッシュを集めておく（壁・床・的など）
     this.refreshShootables();
@@ -438,6 +439,7 @@ export class WeaponSystem {
     this.reloading = false;
     this.adsProgress = 0;
     this.hud.setWeaponName(w.spec.displayName);
+    this.hud.setFireMode(w.spec.automatic ? "AUTO" : "SEMI");
     this.hud.setAmmo(w.mag, w.reserve);
   }
 
@@ -686,6 +688,7 @@ export class WeaponSystem {
     const w = this.weapons.get(this.current)!;
     this.hud.setAmmo(w.mag, w.reserve);
     this.hud.setWeaponName(w.spec.displayName);
+    this.hud.setFireMode(w.spec.automatic ? "AUTO" : "SEMI");
 
     const adsDone = this.adsProgress > 0.6;
     if (adsDone && this.spec.scope) {

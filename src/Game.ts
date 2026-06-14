@@ -1237,6 +1237,7 @@ export class Game {
     this.hud.update(dt);
     this.hud.setStance(this.player.stance);
     this.hud.setSpeed(this.player.horizontalSpeed);
+    this.hud.setHp(this.health.getCurrent(), this.health.getMax());
 
     // 近接の毎フレーム進行（アニメ・命中・トレイル・シェイク量の更新）。
     this.melee.update(dt, now);

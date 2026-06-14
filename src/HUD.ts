@@ -23,6 +23,11 @@ export class HUD {
 
   private stanceLabel = document.getElementById("stance-label") as HTMLElement;
   private speedLabel = document.getElementById("speed-label") as HTMLElement;
+  private fireMode = document.getElementById("fire-mode") as HTMLElement;
+
+  // 左下ステータスパネルのHPバー（Healthの値を毎フレーム反映する）。
+  private statusHpFill = document.getElementById("status-hp-fill") as HTMLElement;
+  private statusHpLabel = document.getElementById("status-hp-label") as HTMLElement;
 
   // 近接の中央フラッシュ（FINISHER / KNOCKBACK など）とキルフィード
   private meleeBanner = document.getElementById("melee-banner") as HTMLElement;
@@ -44,12 +49,29 @@ export class HUD {
     this.weaponName.textContent = name;
   }
 
+  // 連射モード表示（AUTO / SEMI）。武器切替・初期化時に武器スペックから設定する。
+  setFireMode(label: string): void {
+    if (this.fireMode) this.fireMode.textContent = label;
+  }
+
+  // 左下ステータスパネルのHPバーを現在値に合わせて更新する（緑→黄→赤）。
+  setHp(current: number, max: number): void {
+    if (!this.statusHpFill) return;
+    const ratio = max > 0 ? current / max : 0;
+    this.statusHpFill.style.width = `${Math.round(ratio * 100)}%`;
+    let color = "#46d36a";
+    if (ratio <= 0.3) color = "#e7503a";
+    else if (ratio <= 0.6) color = "#e7b53a";
+    this.statusHpFill.style.background = color;
+    if (this.statusHpLabel) this.statusHpLabel.textContent = `HP ${Math.round(current)}`;
+  }
+
   setStance(stance: Stance): void {
     this.stanceLabel.textContent = stance;
   }
 
   setSpeed(speed: number): void {
-    this.speedLabel.textContent = `SPEED ${speed.toFixed(1)}`;
+    this.speedLabel.textContent = `SPEED ${speed.toFixed(1)} m/s`;
   }
 
   // 表示モードの切替（腰だめ十字／ドットサイト）

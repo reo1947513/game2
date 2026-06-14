@@ -170,16 +170,19 @@ export class AssetsPanel implements DevPanel {
       );
     }
 
-    // テクスチャ（キャラ・BaseColor）：クリックで対応モデルに貼って3D
-    this.section("テクスチャ（キャラ・BaseColor）");
+    // キャラテクスチャ：対応する実モデルに貼った3Dサムネで表示（平面ではなく3D）。
+    this.section("キャラテクスチャ（実モデルに適用・3D）");
     const tg = this.grid();
     for (const [path, getUrl] of Object.entries(CHARACTER_TEX)) {
       const make = this.texturePreviewMake(path);
-      tg.appendChild(
-        this.texCard(getUrl, this.texName(path), make
-          ? () => this.modal.open(make, this.texName(path), [{ label: "種別", value: "キャラテクスチャ→実モデル3D" }])
-          : undefined)
-      );
+      if (make) {
+        tg.appendChild(
+          this.modelCard(this.texName(path), make, [{ label: "種別", value: "キャラテクスチャ→実モデル3D" }])
+        );
+      } else {
+        // 対応モデルが無いものだけ平面表示にフォールバック
+        tg.appendChild(this.texCard(getUrl, this.texName(path), undefined));
+      }
     }
 
     // プロップ（木・室内・実モデル）

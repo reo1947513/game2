@@ -249,6 +249,38 @@ export class AssetsPanel implements DevPanel {
     this.env = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   }
 
+  // サムネ生成の待ち行列。画面内に入った順に積み、1フレームあたり少数だけ処理して
+  // toDataURL（同期PNG変換）の集中によるカクつきを防ぐ。
+  private thumbQueue: Array<() => void> = [];
+  private pumping = false;
+  private readonly THUMBS_PER_FRAME = 1;
+
+  private enqueueThumb(fn: () => void): void {
+    this.thumbQueue.push(fn);
+    if (!this.pumping) {
+      this.pumping = true;
+      requestAnimationFrame(this.pumpThumbs);
+    }
+  }
+
+  private pumpThumbs = (): void => {
+    // dispose 済み（レンダラー解放後）なら以降は走らせない。
+    if (!this.renderer) {
+      this.thumbQueue = [];
+      this.pumping = false;
+      return;
+    }
+    for (let i = 0; i < this.THUMBS_PER_FRAME && this.thumbQueue.length > 0; i++) {
+      const fn = this.thumbQueue.shift();
+      if (fn) fn();
+    }
+    if (this.thumbQueue.length > 0) {
+      requestAnimationFrame(this.pumpThumbs);
+    } else {
+      this.pumping = false;
+    }
+  };
+
   private ensureObserver(): void {
     if (this.observer) return;
     const root = this.element.parentElement ?? null;
@@ -260,11 +292,11 @@ export class AssetsPanel implements DevPanel {
           if (fn) {
             this.lazy.delete(e.target);
             this.observer?.unobserve(e.target);
-            fn();
+            this.enqueueThumb(fn); // 即実行せずキューへ積み、毎フレーム少数ずつ処理する
           }
         }
       },
-      { root, rootMargin: "600px 0px" }
+      { root, rootMargin: "300px 0px" } // 先読み余白も 600px → 300px に圧縮し一度に積む枚数を減らす
     );
   }
 
@@ -585,6 +617,8 @@ export class AssetsPanel implements DevPanel {
       this.observer = null;
     }
     this.lazy.clear();
+    this.thumbQueue = []; // 未処理のサムネ生成を破棄（解放後のレンダラー参照を防ぐ）
+    this.pumping = false;
     if (this.env) {
       this.env.dispose();
       this.env = null;

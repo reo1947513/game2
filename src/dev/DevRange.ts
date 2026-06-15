@@ -168,6 +168,17 @@ export class DevRange implements DevApp {
     if (dt > 0.05) dt = 0.05;
     const now = performance.now() / 1000;
 
+    // 全画面パネル表示中は 3D ビューがほぼ全面を覆われて見えない。
+    // そのため 3D の更新・描画を丸ごと省き、表示中の DOM パネルと HUD だけ回す。
+    // （ASSETS 等を眺めている間、裏で見えないシーンを毎フレーム描く無駄を止める。
+    //   全画面を解除＝▽通常表示にすると下記の通常経路へ戻り、3D 描画が再開する。）
+    if (this.fullscreen) {
+      const panel = this.panels[this.activeTab];
+      if (panel.update) panel.update(dt, now);
+      this.hud.update(this.ctx.player);
+      return;
+    }
+
     const inputState = this.ctx.input.sample();
 
     if (this.cameraMode === "fps") {

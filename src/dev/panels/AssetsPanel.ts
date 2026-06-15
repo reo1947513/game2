@@ -409,14 +409,14 @@ export class AssetsPanel implements DevPanel {
     if (raw.x > raw.z * 1.15) obj.rotation.y = -Math.PI / 2; // 横向き → 前方
     obj.updateMatrixWorld(true);
 
-    // 2) 最長辺を基準にスケールを合わせる。
+    // 2) 最長辺を基準にスケールを合わせる（手元で大きく見えるよう 0.6→0.9）。
     const size = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
-    obj.scale.setScalar(0.6 / (Math.max(size.x, size.y, size.z) || 1));
+    obj.scale.setScalar(0.9 / (Math.max(size.x, size.y, size.z) || 1));
     obj.updateMatrixWorld(true);
 
-    // 3) 原点寄せ＋手元の少し前へ置く。
+    // 3) 原点寄せ＋手元へ置く（奥へ行き過ぎないよう手前に -0.3→-0.12、大きくなった分だけ少し下げる）。
     const c = new THREE.Box3().setFromObject(obj).getCenter(new THREE.Vector3());
-    obj.position.set(-c.x, -c.y - 0.05, -c.z - 0.3);
+    obj.position.set(-c.x, -c.y - 0.12, -c.z - 0.12);
   }
 
   // ステージカード：遅延で俯瞰サムネ、クリックで確認用ロード。

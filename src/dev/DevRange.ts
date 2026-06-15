@@ -47,10 +47,13 @@ export class DevRange implements DevApp {
   private activeTab: TabId = "assets";
 
   private cameraMode: CameraMode = "fps";
-  private fullscreen = true; // パネル全画面（タブを切り替えても維持する）
+  private fullscreen = true; // パネル全画面（=一覧プレビュー）。false の間は FPS でバーは非表示。
   private running = false;
   private onExit: (() => void) | null = null;
   private canvasClick: (() => void) | null = null;
+  private fsBtn: HTMLButtonElement | null = null; // 全画面トグルボタン（プレビュー側の「▽通常表示」）
+  private onLockChange: (() => void) | null = null; // ESC等でポインタロックが外れたら一覧プレビューを開く
+  private onEscKey: ((e: KeyboardEvent) => void) | null = null; // プレビュー中ESCで閉じる／未ロック時ESCで開く
 
   private galleryMgr: GalleryManager;
 
@@ -82,6 +85,21 @@ export class DevRange implements DevApp {
     };
     this.ctx.renderer.domElement.addEventListener("click", this.canvasClick);
 
+    // ESC で一覧プレビューをトグル。FPS中はポインタロック中のためESCはブラウザがロック解除に使う。
+    // よって「ロックが外れたら開く」をロック解除イベントで拾うのが確実（キー単体は届かないことがある）。
+    this.onLockChange = () => {
+      if (!document.pointerLockElement && !this.fullscreen) this.openPreview();
+    };
+    document.addEventListener("pointerlockchange", this.onLockChange);
+    // 未ロック時のESC（プレビューを閉じる／ロックしていないFPSで開く）を capture で拾う。
+    // パネルは keydown を stopPropagation するが、capture はそれより先に走るため確実に届く。
+    this.onEscKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (this.fullscreen) this.closePreview();
+      else if (!document.pointerLockElement) this.openPreview();
+    };
+    window.addEventListener("keydown", this.onEscKey, true);
+
     this.clock.start();
     this.loop();
   }
@@ -108,6 +126,15 @@ export class DevRange implements DevApp {
       this.ctx.renderer.domElement.removeEventListener("click", this.canvasClick);
       this.canvasClick = null;
     }
+    if (this.onLockChange) {
+      document.removeEventListener("pointerlockchange", this.onLockChange);
+      this.onLockChange = null;
+    }
+    if (this.onEscKey) {
+      window.removeEventListener("keydown", this.onEscKey, true);
+      this.onEscKey = null;
+    }
+    this.fsBtn = null;
     if (this.panelRoot) {
       this.panelRoot.remove();
       this.panelRoot = null;
@@ -140,6 +167,7 @@ export class DevRange implements DevApp {
     const sp = this.ctx.stage.playerSpawn;
     this.ctx.player.respawn(sp.x, sp.y, sp.z);
     (this.panels.targets as TargetsPanel).spawnPreset();
+    this.setFullscreen(false); // 射撃場に入ったら一覧プレビューを閉じてFPSへ
   }
 
   // 本格射撃場 SHOOTING GALLERY へ切り替える。
@@ -153,6 +181,7 @@ export class DevRange implements DevApp {
     this.ctx.player.respawn(sp.x, sp.y, sp.z);
     this.galleryMgr.enable();
     this.galleryMgr.presetAccuracy(); // 初期は距離別の静止的
+    this.setFullscreen(false); // 射撃場に入ったら一覧プレビューを閉じてFPSへ
   }
 
   getGallery(): GalleryManager {
@@ -232,19 +261,12 @@ export class DevRange implements DevApp {
       bar.appendChild(b);
     }
 
-    // 全画面トグル（タブを切り替えても全画面表示を維持する）
+    // 全画面トグル（プレビュー側の「▽通常表示」でFPSへ戻る）。状態は setFullscreen に集約。
     const fsBtn = document.createElement("button");
     fsBtn.className = "dr-tgl" + (this.fullscreen ? " on" : "");
-    const fsLabel = (): void => {
-      fsBtn.textContent = this.fullscreen ? "▽ 通常表示" : "△ 全画面";
-    };
-    fsLabel();
-    fsBtn.onclick = () => {
-      this.fullscreen = !this.fullscreen;
-      fsBtn.classList.toggle("on", this.fullscreen);
-      fsLabel();
-      this.applyFullscreen();
-    };
+    fsBtn.textContent = this.fullscreen ? "▽ 通常表示" : "△ 全画面";
+    fsBtn.onclick = () => this.setFullscreen(!this.fullscreen);
+    this.fsBtn = fsBtn;
     bar.appendChild(fsBtn);
 
     bar.appendChild(this.buildGlobalToggles());
@@ -266,6 +288,31 @@ export class DevRange implements DevApp {
     this.panelRoot?.classList.toggle("dr-full", this.fullscreen);
     // ASSETS のプレビューは全画面でない時は隠す（ボタンで再表示）。
     (this.panels.assets as AssetsPanel).setHostFullscreen(this.fullscreen);
+  }
+
+  // 全画面（=一覧プレビュー）の表示状態を切り替える。ボタン・ESC・ポインタロック解除の
+  // すべてがここを通すことで、ボタン表示と実状態がずれない。
+  private setFullscreen(v: boolean): void {
+    this.fullscreen = v;
+    if (this.fsBtn) {
+      this.fsBtn.classList.toggle("on", v);
+      this.fsBtn.textContent = v ? "▽ 通常表示" : "△ 全画面";
+    }
+    this.applyFullscreen();
+  }
+
+  // 一覧プレビュー（ASSETS）を開く。FPS中にESCでロックが外れた時などに呼ぶ。
+  private openPreview(): void {
+    if (this.fullscreen) return;
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.switchTab("assets"); // 開くのは一覧プレビュー
+    this.setFullscreen(true);
+  }
+
+  // 一覧プレビューを閉じてFPSへ戻る（プレビュー中のESC／▽通常表示ボタン）。
+  private closePreview(): void {
+    if (!this.fullscreen) return;
+    this.setFullscreen(false);
   }
 
   // グローバルトグル（回復 / 無敵 / 飛行 / 座標表示）をバー右側へ。
@@ -341,6 +388,9 @@ export class DevRange implements DevApp {
         font-family:system-ui,-apple-system,sans-serif;color:#e8eaed;
         background:rgba(8,10,14,0.92);border-top:2px solid #ffb83c;
         box-shadow:0 -6px 24px rgba(0,0,0,0.6);pointer-events:auto;}
+      /* 全画面（=一覧プレビュー）でない間は FPS。下部バーを含むパネルを丸ごと隠す。
+         （ESC で一覧プレビューを開くまで DEV RANGE のUIは出さない。左上バッジは hud 側で別管理） */
+      #dev-range:not(.dr-full){display:none;}
       /* ASSETS タブは画面いっぱいに（DEV RANGE バッジ行のすぐ下から下端まで） */
       #dev-range.dr-full{top:46px;background:rgba(8,10,14,0.98);}
       #dev-range.dr-full .dr-content{height:auto;flex:1 1 auto;min-height:0;}

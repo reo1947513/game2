@@ -767,6 +767,10 @@ export class Game {
       hp: this.health.getCurrent(),
       onGround: p.grounded,
       seq: this.onlineSeq,
+      // 遠隔プレイヤーの見た目同期：姿勢（しゃがみ/伏せ）・構え・近接スイング種別。
+      stance: p.stance.toLowerCase() as PlayerState["stance"],
+      aiming: inputState.aiming,
+      melee: this.melee.currentMelee() ?? undefined,
     };
     this.network.sendPlayerState(state);
     this.predictor.record(this.onlineSeq, state.position);

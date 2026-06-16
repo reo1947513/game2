@@ -9,6 +9,8 @@ export interface AvatarAnimParams {
   pitch: number; // 上下の向き（上半身/頭の傾き）
   isAiming: boolean; // 構えポーズ
   isCrouching: boolean; // しゃがみ/スライド
+  isProne: boolean; // 伏せ（水平に寝そべる）
+  melee: "knife" | "kick" | null; // 近接スイング中のみ（ナイフ振り/蹴り）
   weaponType: string; // 手に持つ武器（ar/sniper/knife/none）
 }
 

@@ -18,11 +18,30 @@ export interface AvatarRig {
 export class AvatarAnimator {
   // t は累積時間（秒）。
   static apply(rig: AvatarRig, params: AvatarAnimParams, t: number): void {
-    const { speed, isGrounded, verticalVel, pitch, isAiming, isCrouching } = params;
+    const { speed, isGrounded, verticalVel, pitch, isAiming, isCrouching, isProne, melee } = params;
 
     // 上半身・頭の上下向き（pitch）
     rig.body.rotation.x = pitch * 0.25;
     rig.head.rotation.x = pitch * 0.5;
+    // 肩の横ひねりは近接スイング用。毎フレーム既定へ戻して残留を防ぐ。
+    rig.shoulderL.rotation.y = 0;
+    rig.shoulderR.rotation.y = 0;
+
+    if (isProne) {
+      // 伏せ：胴ごと水平に倒すのは PrimitiveAvatar 側（object3d の回転）。ここでは手足を伸ばして
+      // 寝そべり＋前方へ構える形にする（脚はまっすぐ、腕は前方）。
+      rig.body.rotation.x = 0;
+      rig.head.rotation.x = -0.5; // 寝た姿勢から前方を見るため頭を起こす
+      rig.hipL.rotation.x = 0.1;
+      rig.hipR.rotation.x = 0.1;
+      rig.kneeL.rotation.x = 0.05;
+      rig.kneeR.rotation.x = 0.05;
+      rig.shoulderL.rotation.x = -1.5;
+      rig.shoulderR.rotation.x = -1.5;
+      rig.elbowL.rotation.x = -0.4;
+      rig.elbowR.rotation.x = -0.4;
+      return;
+    }
 
     if (!isGrounded) {
       // 空中：上昇は抱え込み、下降は伸ばす
@@ -79,6 +98,20 @@ export class AvatarAnimator {
       rig.shoulderR.rotation.x = -1.4;
       rig.elbowL.rotation.x = -0.6;
       rig.elbowR.rotation.x = -0.6;
+    }
+
+    // 近接スイング（短時間フラグ。代表ポーズで上書きし、棒立ちに見えないようにする）
+    if (melee === "knife") {
+      rig.shoulderR.rotation.x = -1.2;
+      rig.shoulderR.rotation.y = 0.7; // 体の前を横切る振り
+      rig.elbowR.rotation.x = -1.0;
+      rig.shoulderL.rotation.x = -0.5;
+    } else if (melee === "kick") {
+      rig.hipR.rotation.x = -1.5; // 右脚を前方へ蹴り上げ
+      rig.kneeR.rotation.x = 0.2;
+      rig.body.rotation.x -= 0.2; // やや後傾
+      rig.shoulderL.rotation.x = -0.5;
+      rig.shoulderR.rotation.x = -0.5;
     }
   }
 }

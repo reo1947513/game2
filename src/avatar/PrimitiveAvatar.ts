@@ -9,8 +9,10 @@ export class PrimitiveAvatar implements IAvatar {
   readonly object3d: THREE.Group;
 
   private rig: AvatarRig;
+  private bodyRoot!: THREE.Group; // 胴＋脚をまとめる内部ルート（伏せ時にここごと水平へ倒す）
   private label: NameLabel;
   private time = 0;
+  private proneAmt = 0; // 伏せの補間量（0=立ち, 1=水平）
   private currentWeapon = "";
   private weaponSlot: THREE.Group; // 右手の武器取付先
   private weaponMesh: THREE.Object3D | null = null;
@@ -40,10 +42,15 @@ export class PrimitiveAvatar implements IAvatar {
     });
     this.weaponMat = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.5, metalness: 0.4 });
 
+    // 伏せ時に胴ごと水平へ倒すための内部ルート（名前ラベルは object3d 直下に残し一緒に倒さない）。
+    const bodyRoot = new THREE.Group();
+    this.object3d.add(bodyRoot);
+    this.bodyRoot = bodyRoot;
+
     // 胴体（pitch で傾く） — 腰 y=0.95 を支点に上半身が前後する
     const body = new THREE.Group();
     body.position.y = 0.95;
-    this.object3d.add(body);
+    bodyRoot.add(body);
 
     this.addMesh(body, this.box(0.42, 0.58, 0.26), this.baseMat, 0, 0.3, 0); // 胴
     this.addMesh(body, this.box(0.3, 0.26, 0.12), this.accentMat, 0, 0.36, -0.12); // 胸アーマー（前面アクセント）
@@ -61,9 +68,9 @@ export class PrimitiveAvatar implements IAvatar {
     const armL = this.buildArm(-1, body);
     const armR = this.buildArm(1, body);
 
-    // 股→脚（root の子。pitch では傾かない）
-    const legL = this.buildLeg(-1, this.object3d);
-    const legR = this.buildLeg(1, this.object3d);
+    // 股→脚（bodyRoot の子。pitch では傾かない）
+    const legL = this.buildLeg(-1, this.bodyRoot);
+    const legR = this.buildLeg(1, this.bodyRoot);
 
     this.weaponSlot = armR.hand;
 
@@ -195,6 +202,12 @@ export class PrimitiveAvatar implements IAvatar {
     if (params.weaponType && params.weaponType !== this.currentWeapon) {
       this.setWeapon(params.weaponType);
     }
+    // 伏せは胴ごと水平へ倒す（足元を支点に前へ）。急変を避けて補間する。
+    // 名前ラベルは object3d 直下なので倒れず頭上付近に残る。
+    const proneTarget = params.isProne ? 1 : 0;
+    this.proneAmt += (proneTarget - this.proneAmt) * Math.min(1, dt * 10);
+    this.bodyRoot.rotation.x = -this.proneAmt * (Math.PI / 2) * 0.92; // ほぼ水平
+    this.bodyRoot.position.y = this.proneAmt * 0.32; // 地面へめり込まないよう持ち上げ
     AvatarAnimator.apply(this.rig, params, this.time);
   }
 

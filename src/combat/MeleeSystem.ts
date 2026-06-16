@@ -87,6 +87,11 @@ export class MeleeSystem {
     return this.lungeVz;
   }
 
+  // 現在スイング中の近接種別（オンラインで遠隔プレイヤーの姿勢同期に使う。非スイング時 null）。
+  currentMelee(): MeleeType | null {
+    return this.meleeType;
+  }
+
   // 入力処理。プレイヤー更新の前に呼び、発動とランジ速度を確定させる。
   handleInput(input: InputState, now: number, dt: number): void {
     void now;

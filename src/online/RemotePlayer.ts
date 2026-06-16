@@ -16,6 +16,11 @@ export class RemotePlayer {
   private prevPos: THREE.Vector3 | null = null;
   private maxHp = 100;
 
+  // 同期される見た目状態（最新の受信値を保持し、毎フレームのアニメ引数に反映する）
+  private stance: "stand" | "crouch" | "prone" = "stand";
+  private aiming = false;
+  private melee: "knife" | "kick" | null = null;
+
   constructor(playerId: string, color?: number) {
     this.playerId = playerId;
     this.group = new THREE.Group();
@@ -37,6 +42,9 @@ export class RemotePlayer {
   // サーバーからの状態を受け取る。serverTime は WorldState.timestamp（補間の時間軸の基準）。
   receiveState(state: PlayerState, serverTime: number): void {
     this.interp.push(state.position, state.yaw, state.pitch, serverTime);
+    this.stance = state.stance ?? "stand";
+    this.aiming = state.aiming ?? false;
+    this.melee = state.melee ?? null;
     if (state.hp > this.maxHp) this.maxHp = state.hp;
     if (state.hp <= 0) {
       this.avatar.setState("dead");
@@ -75,9 +83,12 @@ export class RemotePlayer {
       verticalVel,
       yaw: s.yaw,
       pitch: s.pitch,
-      isAiming: false, // 同期対象外（現状スタブ）
-      isCrouching: false, // 同期対象外（現状スタブ）
-      weaponType: "ar", // 同期対象外（既定）
+      isAiming: this.aiming,
+      isCrouching: this.stance === "crouch",
+      isProne: this.stance === "prone",
+      melee: this.melee,
+      // ナイフ近接中はナイフを構える。それ以外は既定（ar）。武器種そのものは未同期。
+      weaponType: this.melee === "knife" ? "knife" : "ar",
     };
     this.avatar.update(dt, params);
   }

@@ -848,6 +848,10 @@ export class Game {
       if (world.tdm.phase === "RESULT" && !this.tdmResultShown) {
         this.tdmResultShown = true;
         this.suppressUnlockMenu = true;
+        // オフラインの結果表示（onModeFinish）と同様にループを止める。止めないと毎フレームの
+        // 更新・送信が続き、結果UIの「ロビーに戻る」が反応しないことがある。
+        this.screen = "result";
+        this.paused = true;
         if (document.exitPointerLock) document.exitPointerLock();
         this.teamHud.showResult(world.tdm, this.network.playerId, nameOf, () => this.showMenu());
       }
@@ -866,6 +870,10 @@ export class Game {
       if (world.coop.phase === "RESULT" && !this.coopResultShown) {
         this.coopResultShown = true;
         this.suppressUnlockMenu = true;
+        // オフラインの結果表示（onModeFinish）と同様にループを止める。止めないと毎フレームの
+        // 更新・送信が続き、結果UIの「ロビーに戻る」が反応しないことがある。
+        this.screen = "result";
+        this.paused = true;
         if (document.exitPointerLock) document.exitPointerLock();
         this.coopHud.showResult(world.coop, () => this.showMenu());
       }
@@ -893,6 +901,10 @@ export class Game {
       if (world.rooftop.phase === "RESULT" && !this.rooftopResultShown) {
         this.rooftopResultShown = true;
         this.suppressUnlockMenu = true;
+        // オフラインの結果表示（onModeFinish）と同様にループを止める。止めないと毎フレームの
+        // 更新・送信が続き、結果UIの「メニューへ」が反応しないことがある。
+        this.screen = "result";
+        this.paused = true;
         if (document.exitPointerLock) document.exitPointerLock();
         this.rooftopHud.showResult(
           world.rooftop,
